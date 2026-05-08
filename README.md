@@ -24,6 +24,3 @@ O sistema possui finalidade exclusivamente acadêmica e educacional, não substi
 - **Orientador:** Prof. Me. Alisson Wilker Andrade Silva
 - **Coorientadora:** Prof. Me. Maria Marclane Bezerra Vieira
 
-## 📜 Direitos Autorais
-
-Todo o conteúdo deste repositório, incluindo código-fonte, documentação e materiais associados, é protegido por direitos autorais. A reprodução, distribuição ou utilização, total ou parcial, para fins comerciais depende de autorização prévia dos autores.
