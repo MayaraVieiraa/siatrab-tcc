@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "911480728638",
+    "project_id": "siatrab-53f04",
+    "storage_bucket": "siatrab-53f04.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:911480728638:android:fd0c292539fe5e8de0756f",
+        "android_client_info": {
+          "package_name": "com.example.siatrab"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA0wJ2DEZFq9dUcj_2iSaXG6PQvScw2S2U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
