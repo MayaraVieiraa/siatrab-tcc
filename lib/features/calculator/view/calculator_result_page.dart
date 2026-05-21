@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../viewmodel/calculator_viewmodel.dart';
+import '../../history/repository/history_repository.dart';
+import '../../../shared/utils/pdf_service.dart';
 
 class CalculatorResultPage extends ConsumerWidget {
   final Map<String, dynamic> data;
@@ -14,11 +16,9 @@ class CalculatorResultPage extends ConsumerWidget {
     final result = calcState.result;
 
     if (result == null) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF101D42),
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
+      return const Scaffold(
+        backgroundColor: Color(0xFF192E6A),
+        body: Center(child: CircularProgressIndicator(color: Colors.white)),
       );
     }
 
@@ -26,54 +26,83 @@ class CalculatorResultPage extends ConsumerWidget {
     final demissao = data['dataDemissao'] as DateTime;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF101D42),
-      body: Column(
-        children: [
-          _buildHeader(context),
-          _buildMenuTabs(),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  _buildBody(result, admissao, demissao),
-                  _buildActionButtons(context, ref),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+      backgroundColor: Colors.transparent,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF0F172A),
+              Color(0xFF1E3A8A),
+              Color(0xFF192E6A),
+              Color(0xFF192E6A),
+            ],
+            stops: [0.49, 0.58, 0.58, 0.67],
           ),
-        ],
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(child: CustomPaint(painter: _DiagonalPainter())),
+            Column(
+              children: [
+                _buildHeader(context),
+                _buildMenuTabs(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildBody(result, admissao, demissao),
+                        _buildActionButtons(
+                          context,
+                          ref,
+                          result,
+                          admissao,
+                          demissao,
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: _buildBottomNav(context),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 56, 16, 16),
-      color: const Color(0xFF101D42),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-            onPressed: () => context.go('/calculator'),
-          ),
-          const Text(
-            'Resultado da Rescisão',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+              onPressed: () => context.go('/calculator'),
             ),
-          ),
-        ],
+            const Text(
+              'Resultado da Rescisão',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildMenuTabs() {
-    return Container(
-      color: const Color(0xFF101D42),
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -101,7 +130,7 @@ class CalculatorResultPage extends ConsumerWidget {
       child: Text(
         label,
         style: TextStyle(
-          color: selected ? const Color(0xFF101D42) : Colors.white70,
+          color: selected ? const Color(0xFF192E6A) : Colors.white70,
           fontSize: 11,
           fontWeight: FontWeight.w600,
         ),
@@ -110,7 +139,10 @@ class CalculatorResultPage extends ConsumerWidget {
   }
 
   Widget _buildBody(
-      CalculatorResult result, DateTime admissao, DateTime demissao) {
+    CalculatorResult result,
+    DateTime admissao,
+    DateTime demissao,
+  ) {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -123,29 +155,45 @@ class CalculatorResultPage extends ConsumerWidget {
         children: [
           _buildSectionTitle('Resumo rápido'),
           const SizedBox(height: 12),
-          _buildInfoRow('Nº Identificação:', '#0001'),
           _buildInfoRow('Data de Admissão:', _formatDate(admissao)),
           _buildInfoRow('Data de Desligamento:', _formatDate(demissao)),
           _buildInfoRow(
-              'Meses Trabalhados:', '${result.mesesTrabalhados} meses'),
+            'Meses Trabalhados:',
+            '${result.mesesTrabalhados} meses',
+          ),
           const Divider(height: 28),
           _buildSectionTitle('Verbas Chave'),
           const SizedBox(height: 12),
-          _buildValueRow('Valor Bruto da Rescisão:', result.totalBruto,
-              bold: true, highlight: true),
-          _buildValueRow('Valor dos Descontos:', result.totalDescontos,
-              isNegative: true),
-          _buildValueRow('Valor Líquido a Receber:', result.totalLiquido,
-              bold: true, highlight: true),
+          _buildValueRow(
+            'Valor Bruto da Rescisão:',
+            result.totalBruto,
+            bold: true,
+            highlight: true,
+          ),
+          _buildValueRow(
+            'Valor dos Descontos:',
+            result.totalDescontos,
+            isNegative: true,
+          ),
+          _buildValueRow(
+            'Valor Líquido a Receber:',
+            result.totalLiquido,
+            bold: true,
+            highlight: true,
+          ),
           const Divider(height: 28),
           _buildSectionTitle('Verbas rescisórias - detalhamento'),
           const SizedBox(height: 12),
           _buildValueRow('Saldo de Salário:', result.saldoSalario),
           _buildValueRow('Aviso Prévio Indenizado:', result.avisoPrevio),
           _buildValueRow(
-              '13º Salário Proporcional:', result.decimoTerceiroProporcional),
-          _buildValueRow('Férias Proporcionais + 1/3:',
-              result.feriasProporcional + result.tercoFerias),
+            '13º Salário Proporcional:',
+            result.decimoTerceiroProporcional,
+          ),
+          _buildValueRow(
+            'Férias Proporcionais + 1/3:',
+            result.feriasProporcional + result.tercoFerias,
+          ),
           _buildValueRow('Férias Vencidas:', result.feriasVencidas),
           _buildValueRow('Multa de 40% s/ FGTS:', result.multaFgts),
           _buildValueRow('FGTS Depósito:', result.fgtsDeposito),
@@ -174,7 +222,7 @@ class CalculatorResultPage extends ConsumerWidget {
       style: const TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.bold,
-        color: Color(0xFF101D42),
+        color: Color(0xFF192E6A),
       ),
     );
   }
@@ -185,11 +233,14 @@ class CalculatorResultPage extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: const TextStyle(fontSize: 13, color: Colors.black54)),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w500)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );
@@ -203,10 +254,10 @@ class CalculatorResultPage extends ConsumerWidget {
     bool isNegative = false,
   }) {
     final color = highlight
-        ? const Color(0xFF101D42)
+        ? const Color(0xFF192E6A)
         : isNegative
-            ? Colors.red
-            : Colors.black87;
+        ? Colors.red
+        : Colors.black87;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -236,7 +287,36 @@ class CalculatorResultPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, WidgetRef ref) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    CalculatorResult result,
+    DateTime admissao,
+    DateTime demissao,
+  ) {
+    // Prepara os dados para o PDF e Compartilhar
+    final pdfData = {
+      'modalidade': 'Rescisão',
+      'admissao': admissao,
+      'demissao': demissao,
+      'salario': result.saldoSalario,
+      'saldoSalario': result.saldoSalario,
+      'avisoPrevio': result.avisoPrevio,
+      'decimoTerceiro': result.decimoTerceiroProporcional,
+      'feriasProporcionais': result.feriasProporcional,
+      'tercoFerias': result.tercoFerias,
+      'feriasVencidas': result.feriasVencidas,
+      'multaFgts': result.multaFgts,
+      'fgtsDeposito': result.fgtsDeposito,
+      'insalubridade': result.insalubridade,
+      'horasExtras': result.horasExtrasValor,
+      'inss': result.inss,
+      'totalBruto': result.totalBruto,
+      'totalDescontos': result.totalDescontos,
+      'totalLiquido': result.totalLiquido,
+      'mesesTrabalhados': result.mesesTrabalhados,
+    };
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -244,25 +324,60 @@ class CalculatorResultPage extends ConsumerWidget {
           _buildActionButton(
             label: 'SALVAR CÁLCULO',
             icon: Icons.save_outlined,
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Cálculo salvo com sucesso!'),
-                    backgroundColor: Colors.green),
-              );
+            onTap: () async {
+              try {
+                await historyRepository.saveCalculation({
+                  'modalidade': 'Rescisão',
+                  'salario': result.saldoSalario,
+                  'saldoSalario': result.saldoSalario,
+                  'avisoPrevio': result.avisoPrevio,
+                  'decimoTerceiro': result.decimoTerceiroProporcional,
+                  'feriasProporcional': result.feriasProporcional,
+                  'tercoFerias': result.tercoFerias,
+                  'feriasVencidas': result.feriasVencidas,
+                  'multaFgts': result.multaFgts,
+                  'fgtsDeposito': result.fgtsDeposito,
+                  'insalubridade': result.insalubridade,
+                  'horasExtras': result.horasExtrasValor,
+                  'inss': result.inss,
+                  'totalBruto': result.totalBruto,
+                  'totalDescontos': result.totalDescontos,
+                  'totalLiquido': result.totalLiquido,
+                  'mesesTrabalhados': result.mesesTrabalhados,
+                  'dataAdmissao': admissao.toIso8601String(),
+                  'dataDemissao': demissao.toIso8601String(),
+                });
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cálculo salvo com sucesso!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erro ao salvar: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
           ),
           const SizedBox(height: 10),
           _buildActionButton(
             label: 'EXPORTAR PDF',
             icon: Icons.picture_as_pdf_outlined,
-            onTap: () {},
+            onTap: () => PdfService.generateAndShare(pdfData),
           ),
           const SizedBox(height: 10),
           _buildActionButton(
             label: 'COMPARTILHAR',
             icon: Icons.share_outlined,
-            onTap: () {},
+            onTap: () => PdfService.shareAsText(pdfData),
           ),
           const SizedBox(height: 10),
           _buildActionButton(
@@ -314,9 +429,18 @@ class CalculatorResultPage extends ConsumerWidget {
 
   String _monthName(int month) {
     const months = [
-      'Janeiro', 'Fevereiro', 'Março', 'Abril',
-      'Maio', 'Junho', 'Julho', 'Agosto',
-      'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+      'Janeiro',
+      'Fevereiro',
+      'Março',
+      'Abril',
+      'Maio',
+      'Junho',
+      'Julho',
+      'Agosto',
+      'Setembro',
+      'Outubro',
+      'Novembro',
+      'Dezembro',
     ];
     return months[month - 1];
   }
@@ -324,7 +448,17 @@ class CalculatorResultPage extends ConsumerWidget {
   Widget _buildBottomNav(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF101D42),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF0F172A),
+            Color(0xFF1E3A8A),
+            Color(0xFF192E6A),
+            Color(0xFF192E6A),
+          ],
+          stops: [0.49, 0.58, 0.58, 0.67],
+        ),
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
@@ -341,19 +475,66 @@ class CalculatorResultPage extends ConsumerWidget {
         elevation: 0,
         onTap: (index) {
           switch (index) {
-            case 0: context.go('/home'); break;
-            case 1: context.go('/calculator'); break;
-            case 2: context.go('/chat'); break;
-            case 3: context.go('/profile'); break;
+            case 0:
+              context.go('/home');
+              break;
+            case 1:
+              context.go('/calculator');
+              break;
+            case 2:
+              context.go('/chat');
+              break;
+            case 3:
+              context.go('/profile');
+              break;
           }
         },
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.calculate), label: 'Calculator'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calculate_outlined),
+            activeIcon: Icon(Icons.calculate_rounded),
+            label: 'Calculator',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            activeIcon: Icon(Icons.chat_bubble_rounded),
+            label: 'Chat',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline_rounded),
+            activeIcon: Icon(Icons.person_rounded),
+            label: 'Profile',
+          ),
         ],
       ),
     );
   }
+}
+
+class _DiagonalPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+    final path = Path()
+      ..moveTo(0, size.height * 0.75)
+      ..lineTo(size.width * 0.55, 0)
+      ..lineTo(size.width * 0.85, 0)
+      ..lineTo(size.width * 0.30, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    paint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Color(0xFF1E3A8A), Color(0xFF192E6A), Color(0xFF0F172A)],
+    ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

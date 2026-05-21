@@ -27,9 +27,9 @@ class HomePage extends ConsumerWidget {
     ];
 
     final quickItems = [
-      _MenuItem('INSS', Icons.calendar_today_rounded, '/calculator'),
-      _MenuItem('FGTS', Icons.assignment_rounded, '/calculator'),
-      _MenuItem('Férias', Icons.event_available_rounded, '/calculator'),
+      _MenuItem('INSS', Icons.calendar_today_rounded, '/inss'), // 👈
+      _MenuItem('FGTS', Icons.assignment_rounded, '/fgts'), // 👈
+      _MenuItem('Férias', Icons.event_available_rounded, '/ferias'), // 👈
       _MenuItem('Meus cálculos', Icons.description_rounded, '/history'),
     ];
 

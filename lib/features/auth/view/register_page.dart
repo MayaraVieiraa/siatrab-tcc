@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -231,7 +230,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                             ),
                             const SizedBox(height: 16),
 
-                            // 👇 Checkbox com links clicáveis
+                            // 👇 Checkbox com links clicáveis (VERSÃO CORRIGIDA)
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
@@ -242,44 +241,60 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                       setState(() => _acceptedTerms = value!),
                                 ),
                                 Expanded(
-                                  child: RichText(
-                                    text: TextSpan(
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.black87,
+                                  child: Wrap(
+                                    children: [
+                                      const Text(
+                                        'Concordo com os ',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                        ),
                                       ),
-                                      children: [
-                                        const TextSpan(
-                                          text: 'Concordo com os ',
-                                        ),
-                                        TextSpan(
-                                          text: 'termos de uso',
-                                          style: const TextStyle(
+                                      GestureDetector(
+                                        onTap: () {
+                                          context.push('/terms-of-use');
+                                        },
+                                        child: const Text(
+                                          'termos de uso',
+                                          style: TextStyle(
+                                            fontSize: 12,
                                             color: Color(0xFF5C78FF),
                                             fontWeight: FontWeight.bold,
                                             decoration:
                                                 TextDecoration.underline,
                                           ),
-                                          recognizer: TapGestureRecognizer()
-                                            ..onTap = () =>
-                                                context.push('/terms-of-use'),
                                         ),
-                                        const TextSpan(text: ' e com a '),
-                                        TextSpan(
-                                          text: 'política de privacidade',
-                                          style: const TextStyle(
+                                      ),
+                                      const Text(
+                                        ' e com a ',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      GestureDetector(
+                                        onTap: () {
+                                          context.push('/privacy-policy');
+                                        },
+                                        child: const Text(
+                                          'política de privacidade',
+                                          style: TextStyle(
+                                            fontSize: 12,
                                             color: Color(0xFF5C78FF),
                                             fontWeight: FontWeight.bold,
                                             decoration:
                                                 TextDecoration.underline,
                                           ),
-                                          recognizer: TapGestureRecognizer()
-                                            ..onTap = () =>
-                                                context.push('/privacy-policy'),
                                         ),
-                                        const TextSpan(text: '.'),
-                                      ],
-                                    ),
+                                      ),
+                                      const Text(
+                                        '.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],

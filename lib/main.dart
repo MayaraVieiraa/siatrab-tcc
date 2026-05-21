@@ -16,9 +16,20 @@ import 'features/profile/view/profile_page.dart';
 import 'features/profile/view/privacy_policy_page.dart';
 import 'features/profile/view/terms_of_use_page.dart';
 import 'features/history/view/history_page.dart';
+// REMOVA esta linha: import 'features/history/view/history_detail_page.dart';
 import 'features/profile/view/about_page.dart';
+import 'features/calculator/view/inss_page.dart';
+import 'features/calculator/view/fgts_page.dart';
+import 'features/calculator/view/ferias_page.dart';
 
-const _publicRoutes = ['/splash', '/login', '/register', '/forgot-password'];
+const _publicRoutes = [
+  '/splash', 
+  '/login', 
+  '/register', 
+  '/forgot-password',
+  '/terms-of-use',
+  '/privacy-policy',
+];
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -89,6 +100,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const HomePage(),
       ),
       GoRoute(
+        path: '/history',
+        name: 'history',
+        builder: (context, state) => const HistoryPage(),
+        // REMOVA esta rota inteira:
+        // routes: [
+        //   GoRoute(
+        //     path: 'detail',
+        //     name: 'history-detail',
+        //     builder: (context, state) =>
+        //         HistoryDetailPage(data: state.extra as Map<String, dynamic>),
+        //   ),
+        // ],
+      ),
+      GoRoute(
         path: '/calculator',
         name: 'calculator',
         builder: (context, state) => const CalculatorPage(),
@@ -100,6 +125,21 @@ final routerProvider = Provider<GoRouter>((ref) {
                 CalculatorResultPage(data: state.extra as Map<String, dynamic>),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/inss',
+        name: 'inss',
+        builder: (context, state) => const InssPage(),
+      ),
+      GoRoute(
+        path: '/fgts',
+        name: 'fgts',
+        builder: (context, state) => const FgtsPage(),
+      ),
+      GoRoute(
+        path: '/ferias',
+        name: 'ferias',
+        builder: (context, state) => const FeriasPage(),
       ),
       GoRoute(
         path: '/chat',
@@ -115,11 +155,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/about',
         name: 'about',
         builder: (context, state) => const AboutPage(),
-      ),
-      GoRoute(
-        path: '/history',
-        name: 'history',
-        builder: (context, state) => const HistoryPage(),
       ),
       GoRoute(
         path: '/privacy-policy',
