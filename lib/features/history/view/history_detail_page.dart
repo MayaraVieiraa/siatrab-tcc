@@ -5,12 +5,11 @@ import 'package:intl/intl.dart';
 import '../../../shared/utils/pdf_service.dart';
 import '../../history/repository/history_repository.dart';
 
-class CalculatorResultPage extends ConsumerWidget {
+class HistoryDetailPage extends ConsumerWidget {
   final Map<String, dynamic> data;
-  final String? docId; // ID do documento para exclusão
+  final String? docId;
 
-  // ✅ CORRETO: O construtor deve ter o mesmo nome da classe
-  const CalculatorResultPage({super.key, required this.data, this.docId});
+  const HistoryDetailPage({super.key, required this.data, this.docId});
 
   double _d(String key) => (data[key] as num?)?.toDouble() ?? 0.0;
 
@@ -28,37 +27,75 @@ class CalculatorResultPage extends ConsumerWidget {
     final tipoDesligamento =
         data['tipoDesligamento'] as String? ?? 'Sem justa causa';
     final createdAt = data['createdAt'];
+
     String dataFormatada = '—';
     if (createdAt != null) {
       try {
-        final dt = (createdAt as dynamic).toDate() as DateTime;
-        dataFormatada = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+        if (createdAt is String) {
+          final dt = DateTime.parse(createdAt);
+          dataFormatada = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+        } else {
+          final dt = (createdAt as dynamic).toDate() as DateTime;
+          dataFormatada = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+        }
       } catch (_) {}
     }
 
     String admissao = '—';
     String demissao = '—';
     try {
-      admissao = DateFormat(
-        'dd/MM/yyyy',
-      ).format(DateTime.parse(data['dataAdmissao'] as String));
-      demissao = DateFormat(
-        'dd/MM/yyyy',
-      ).format(DateTime.parse(data['dataDemissao'] as String));
+      if (data['dataAdmissao'] != null) {
+        admissao = DateFormat(
+          'dd/MM/yyyy',
+        ).format(DateTime.parse(data['dataAdmissao'] as String));
+      }
+      if (data['dataDemissao'] != null) {
+        demissao = DateFormat(
+          'dd/MM/yyyy',
+        ).format(DateTime.parse(data['dataDemissao'] as String));
+      }
     } catch (_) {}
 
+    // Compatibilidade com diferentes chaves
+    final double totalBruto = _d('totalBruto') > 0
+        ? _d('totalBruto')
+        : _d('salario');
+    final double inss = _d('inss');
+    final double irrf = _d('irrf');
+    final double totalDescontos = _d('totalDescontos') > 0
+        ? _d('totalDescontos')
+        : (inss + irrf);
+    final double saldoFgtsConta = _d('fgtsDeposito') > 0
+        ? _d('fgtsDeposito')
+        : _d('saldoFgts');
+
+    // Compatibilidade para valores do 13º
+    final double decimoTerceiro = _d('decimoTerceiroProporcional') > 0
+        ? _d('decimoTerceiroProporcional')
+        : _d('decimoTerceiro');
+
+    // Compatibilidade para horas extras
+    final double horasExtras = _d('horasExtrasValor') > 0
+        ? _d('horasExtrasValor')
+        : _d('horasExtras');
+
+    // Compatibilidade para saque do FGTS
+    final double saqueDisponivel = _d('saqueDisponivel') > 0
+        ? _d('saqueDisponivel')
+        : _d('fgtsSaqueDisponivel');
+
     final String labelMulta = tipoDesligamento == 'Acordo mútuo'
-        ? 'Multa de 20% s/ FGTS (acordo mútuo):'
+        ? 'Multa de 20% s/ FGTS:'
         : 'Multa de 40% s/ FGTS:';
 
     final String labelSaque;
     final String valorSaque;
     if (tipoDesligamento == 'Sem justa causa') {
       labelSaque = 'Saque do FGTS disponível (100%):';
-      valorSaque = _formatCurrency(_d('fgtsSaqueDisponivel'));
+      valorSaque = _formatCurrency(saqueDisponivel);
     } else if (tipoDesligamento == 'Acordo mútuo') {
       labelSaque = 'Saque do FGTS disponível (80%):';
-      valorSaque = _formatCurrency(_d('fgtsSaqueDisponivel'));
+      valorSaque = _formatCurrency(saqueDisponivel);
     } else {
       labelSaque = 'Saque do FGTS:';
       valorSaque = 'Não disponível';
@@ -112,14 +149,12 @@ class CalculatorResultPage extends ConsumerWidget {
                     ),
                   ),
                 ),
-                // ── Menu de abas ──────────────────────────────────────
                 _buildMenuTabs(),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
-                        // ── Card principal ────────────────────────────
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
@@ -132,144 +167,182 @@ class CalculatorResultPage extends ConsumerWidget {
                               _sectionTitle('Resumo rápido'),
                               const SizedBox(height: 12),
                               _infoRow('Modalidade:', modalidade),
-                              _infoRow(
-                                'Tipo de desligamento:',
-                                tipoDesligamento,
-                              ),
+                              if (modalidade == 'Rescisão' ||
+                                  modalidade == 'FGTS')
+                                _infoRow(
+                                  'Tipo de desligamento:',
+                                  tipoDesligamento,
+                                ),
                               _infoRow('Data do cálculo:', dataFormatada),
-                              _infoRow('Data de Admissão:', admissao),
-                              _infoRow('Data de Demissão:', demissao),
-                              _infoRow(
-                                'Meses Trabalhados:',
-                                '${data['mesesTrabalhados'] ?? '—'} meses',
-                              ),
+                              if (admissao != '—')
+                                _infoRow('Data de Admissão:', admissao),
+                              if (demissao != '—')
+                                _infoRow('Data de Demissão:', demissao),
+                              if (data['mesesTrabalhados'] != null)
+                                _infoRow(
+                                  'Meses Trabalhados:',
+                                  '${data['mesesTrabalhados']} meses',
+                                ),
                               const Divider(height: 28),
+
                               _sectionTitle('Valores chave'),
                               const SizedBox(height: 12),
                               _valueRow(
-                                'Valor Bruto da Rescisão:',
-                                _d('totalBruto'),
+                                'Valor Base / Bruto:',
+                                totalBruto,
                                 bold: true,
                                 highlight: true,
                               ),
+                              if (totalDescontos > 0)
+                                _valueRow(
+                                  'Total de Descontos:',
+                                  totalDescontos,
+                                  isNegative: true,
+                                ),
                               _valueRow(
-                                'Total de Descontos:',
-                                _d('totalDescontos'),
-                                isNegative: true,
-                              ),
-                              _valueRow(
-                                'Valor Líquido a Receber:',
+                                modalidade == 'FGTS'
+                                    ? 'Total Liberado para Saque:'
+                                    : 'Valor Líquido a Receber:',
                                 _d('totalLiquido'),
                                 bold: true,
                                 highlight: true,
                               ),
                               const Divider(height: 28),
-                              _sectionTitle(
-                                'Verbas rescisórias — detalhamento',
-                              ),
+
+                              _sectionTitle('Detalhamento'),
                               const SizedBox(height: 12),
-                              _valueRow(
-                                'Saldo de Salário:',
-                                _d('saldoSalario'),
-                              ),
-                              if (_d('avisoPrevio') > 0)
-                                _valueRow(
-                                  'Aviso Prévio Indenizado:',
-                                  _d('avisoPrevio'),
-                                ),
-                              _valueRow(
-                                '13º Salário Proporcional:',
-                                _d('decimoTerceiro'),
-                              ),
-                              _valueRow(
-                                'Férias Proporcionais + 1/3:',
-                                _d('feriasProporcional') + _d('tercoFerias'),
-                              ),
-                              if (_d('feriasVencidas') > 0)
-                                _valueRow(
-                                  'Férias Vencidas:',
-                                  _d('feriasVencidas'),
-                                ),
-                              if (_d('insalubridade') > 0)
-                                _valueRow(
-                                  'Adicional de Insalubridade:',
-                                  _d('insalubridade'),
-                                ),
-                              if (_d('horasExtras') > 0)
-                                _valueRow('Horas Extras:', _d('horasExtras')),
+
+                              if (modalidade == 'Rescisão') ...[
+                                if (_d('saldoSalario') > 0)
+                                  _valueRow(
+                                    'Saldo de Salário:',
+                                    _d('saldoSalario'),
+                                  ),
+                                if (_d('avisoPrevio') > 0)
+                                  _valueRow(
+                                    'Aviso Prévio Indenizado:',
+                                    _d('avisoPrevio'),
+                                  ),
+                                if (decimoTerceiro > 0)
+                                  _valueRow(
+                                    '13º Salário Proporcional:',
+                                    decimoTerceiro,
+                                  ),
+                                if ((_d('feriasProporcional') +
+                                        _d('tercoFerias')) >
+                                    0)
+                                  _valueRow(
+                                    'Férias Proporcionais + 1/3:',
+                                    _d('feriasProporcional') +
+                                        _d('tercoFerias'),
+                                  ),
+                                if (_d('feriasVencidas') > 0)
+                                  _valueRow(
+                                    'Férias Vencidas:',
+                                    _d('feriasVencidas'),
+                                  ),
+                                if (_d('insalubridade') > 0)
+                                  _valueRow(
+                                    'Adicional de Insalubridade:',
+                                    _d('insalubridade'),
+                                  ),
+                                if (horasExtras > 0)
+                                  _valueRow('Horas Extras:', horasExtras),
+                              ],
+
+                              if (modalidade == 'Férias') ...[
+                                if (_d('feriasProporcional') > 0)
+                                  _valueRow(
+                                    'Férias Proporcionais:',
+                                    _d('feriasProporcional'),
+                                  ),
+                                if (_d('tercoFerias') > 0)
+                                  _valueRow(
+                                    'Adicional 1/3 Constitucional:',
+                                    _d('tercoFerias'),
+                                  ),
+                              ],
+
                               if (_d('multaFgts') > 0)
                                 _valueRow(labelMulta, _d('multaFgts')),
                               const Divider(height: 28),
-                              _sectionTitle('Descontos detalhados'),
-                              const SizedBox(height: 12),
-                              _valueRow('INSS:', _d('inss'), isNegative: true),
-                              if (_d('irrf') > 0)
-                                _valueRow(
-                                  'IRRF:',
-                                  _d('irrf'),
-                                  isNegative: true,
-                                ),
-                              const Divider(height: 28),
-                              _sectionTitle('FGTS'),
-                              const SizedBox(height: 12),
-                              _valueRow(
-                                'Saldo estimado na conta:',
-                                _d('fgtsDeposito'),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        labelSaque,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.black54,
+
+                              if (inss > 0 || irrf > 0) ...[
+                                _sectionTitle('Descontos detalhados'),
+                                const SizedBox(height: 12),
+                                if (inss > 0)
+                                  _valueRow('INSS:', inss, isNegative: true),
+                                if (irrf > 0)
+                                  _valueRow('IRRF:', irrf, isNegative: true),
+                                const Divider(height: 28),
+                              ],
+
+                              if (modalidade == 'Rescisão' ||
+                                  modalidade == 'FGTS') ...[
+                                _sectionTitle('FGTS'),
+                                const SizedBox(height: 12),
+                                if (saldoFgtsConta > 0)
+                                  _valueRow(
+                                    'Saldo estimado na conta:',
+                                    saldoFgtsConta,
+                                  ),
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          labelSaque,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.black54,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    Text(
-                                      valorSaque,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: _d('fgtsSaqueDisponivel') > 0
-                                            ? const Color(0xFF192E6A)
-                                            : Colors.red,
+                                      Text(
+                                        valorSaque,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: saqueDisponivel > 0
+                                              ? const Color(0xFF192E6A)
+                                              : Colors.red,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              if (tipoDesligamento == 'Sem justa causa')
-                                _buildInfoChip(
-                                  Icons.check_circle_outline,
-                                  'Direito ao Seguro-Desemprego (verifique carência)',
-                                  Colors.green,
-                                ),
-                              if (tipoDesligamento == 'Acordo mútuo')
-                                _buildInfoChip(
-                                  Icons.info_outline,
-                                  'Acordo mútuo não dá direito ao Seguro-Desemprego',
-                                  Colors.orange,
-                                ),
-                              if (tipoDesligamento == 'Pedido de demissão' ||
-                                  tipoDesligamento == 'Com justa causa')
-                                _buildInfoChip(
-                                  Icons.cancel_outlined,
-                                  'Não há direito ao Seguro-Desemprego nem saque do FGTS',
-                                  Colors.red,
-                                ),
-                              const Divider(height: 28),
+                                if (tipoDesligamento == 'Sem justa causa')
+                                  _buildInfoChip(
+                                    Icons.check_circle_outline,
+                                    'Direito ao Seguro-Desemprego (verifique carência)',
+                                    Colors.green,
+                                  ),
+                                if (tipoDesligamento == 'Acordo mútuo')
+                                  _buildInfoChip(
+                                    Icons.info_outline,
+                                    'Acordo mútuo não dá direito ao Seguro-Desemprego',
+                                    Colors.orange,
+                                  ),
+                                if (tipoDesligamento == 'Pedido de demissão' ||
+                                    tipoDesligamento == 'Com justa causa')
+                                  _buildInfoChip(
+                                    Icons.cancel_outlined,
+                                    'Não há direito ao Seguro-Desemprego nem saque do FGTS',
+                                    Colors.red,
+                                  ),
+                                const Divider(height: 28),
+                              ],
+
                               _sectionTitle('Informações adicionais'),
                               const SizedBox(height: 12),
-                              _infoRow(
-                                'Prazo para pagamento:',
-                                '10 dias úteis (Art. 477 CLT)',
-                              ),
+                              if (modalidade == 'Rescisão')
+                                _infoRow(
+                                  'Prazo para pagamento:',
+                                  '10 dias úteis (Art. 477 CLT)',
+                                ),
                               _infoRow(
                                 'Referência legislativa:',
                                 'Lei nº 14.848/2024 · Port. MPS/MF nº 02/2026',
@@ -278,7 +351,7 @@ class CalculatorResultPage extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        // ── Botões de ação (COMPLETOS) ─────────────────
+
                         _buildActionButton(
                           label: 'EXPORTAR PDF',
                           icon: Icons.picture_as_pdf_outlined,
@@ -295,11 +368,15 @@ class CalculatorResultPage extends ConsumerWidget {
                           label: 'REFAZER CÁLCULO',
                           icon: Icons.refresh,
                           onTap: () {
-                            // Navegar para a calculadora com os dados pré-preenchidos
-                            context.go('/calculator', extra: data);
+                            String route = '/calculator';
+                            if (modalidade == 'Férias') route = '/ferias';
+                            if (modalidade == 'FGTS') route = '/fgts';
+                            if (modalidade == 'INSS') route = '/inss';
+                            context.go(route, extra: data);
                           },
                         ),
                         const SizedBox(height: 10),
+
                         if (docId != null)
                           _buildActionButton(
                             label: 'EXCLUIR CÁLCULO',
@@ -343,7 +420,7 @@ class CalculatorResultPage extends ConsumerWidget {
                                         backgroundColor: Colors.green,
                                       ),
                                     );
-                                    context.pop(); // Volta para a lista
+                                    context.pop();
                                   }
                                 } catch (e) {
                                   if (context.mounted) {
@@ -384,8 +461,8 @@ class CalculatorResultPage extends ConsumerWidget {
           children: [
             _buildTab('RESUMO RÁPIDO', true),
             _buildTab('VALORES CHAVE', false),
+            _buildTab('DETALHAMENTO', false),
             _buildTab('DESCONTOS', false),
-            _buildTab('FGTS', false),
             _buildTab('INFORMAÇÕES', false),
           ],
         ),
@@ -418,9 +495,9 @@ class CalculatorResultPage extends ConsumerWidget {
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Row(
         children: [
@@ -557,7 +634,7 @@ class CalculatorResultPage extends ConsumerWidget {
         ),
       ),
       child: BottomNavigationBar(
-        currentIndex: 3, // ou o índice apropriado
+        currentIndex: 3,
         backgroundColor: Colors.transparent,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.white,

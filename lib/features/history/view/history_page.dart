@@ -16,6 +16,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   String _filterModalidade = 'Todos';
+  bool _isLoading = false;
 
   final _modalidades = ['Todos', 'Rescisão', 'INSS', 'Férias', 'FGTS'];
 
@@ -34,14 +35,112 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   List<Map<String, dynamic>> _applyFilters(List<Map<String, dynamic>> items) {
     return items.where((item) {
       final modalidade = (item['modalidade'] as String? ?? '').toLowerCase();
+      final tipoDesligamento = (item['tipoDesligamento'] as String? ?? '')
+          .toLowerCase();
+
+      final searchLower = _searchQuery.toLowerCase();
       final matchesSearch =
           _searchQuery.isEmpty ||
-          modalidade.contains(_searchQuery.toLowerCase());
+          modalidade.contains(searchLower) ||
+          tipoDesligamento.contains(searchLower);
+
       final matchesFilter =
           _filterModalidade == 'Todos' ||
           modalidade == _filterModalidade.toLowerCase();
       return matchesSearch && matchesFilter;
     }).toList();
+  }
+
+  double _getTotalLiquido(Map<String, dynamic> item) {
+    if (item['totalLiquido'] != null) {
+      return (item['totalLiquido'] as num?)?.toDouble() ?? 0;
+    }
+    if (item['salarioLiquido'] != null) {
+      return (item['salarioLiquido'] as num?)?.toDouble() ?? 0;
+    }
+    if (item['totalSaque'] != null) {
+      return (item['totalSaque'] as num?)?.toDouble() ?? 0;
+    }
+    return 0;
+  }
+
+  String _formatDate(dynamic createdAt) {
+    if (createdAt == null) return '—';
+    try {
+      if (createdAt is String) {
+        final dt = DateTime.parse(createdAt);
+        return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+      } else {
+        final dt = (createdAt as dynamic).toDate() as DateTime;
+        return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+      }
+    } catch (_) {
+      return '—';
+    }
+  }
+
+  IconData _getIconData(String modalidade) {
+    switch (modalidade) {
+      case 'Férias':
+        return Icons.beach_access;
+      case 'FGTS':
+        return Icons.account_balance;
+      case 'INSS':
+        return Icons.health_and_safety;
+      default:
+        return Icons.description;
+    }
+  }
+
+  Future<void> _deleteCalculation(String firestoreId, String modalidade) async {
+    setState(() => _isLoading = true);
+    try {
+      await historyRepository.deleteCalculation(firestoreId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cálculo de $modalidade excluído com sucesso!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao excluir: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showDeleteDialog(String firestoreId, String modalidade) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir cálculo'),
+        content: Text('Deseja excluir o cálculo de $modalidade?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteCalculation(firestoreId, modalidade);
+            },
+            child: const Text('Excluir', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -63,9 +162,32 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 }
                 if (snapshot.hasError) {
                   return Center(
-                    child: Text(
-                      'Erro ao carregar histórico: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.red),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          size: 64,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Erro ao carregar histórico: ${snapshot.error}',
+                          style: const TextStyle(color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => setState(() {}),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF192E6A),
+                          ),
+                          child: const Text(
+                            'Tentar novamente',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }
@@ -98,7 +220,22 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF192E6A),
                             ),
-                            child: const Text('Fazer um cálculo'),
+                            child: const Text(
+                              'Fazer um cálculo',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                        if (allItems.isNotEmpty && _searchQuery.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _searchQuery = '';
+                                _searchController.clear();
+                              });
+                            },
+                            child: const Text('Limpar busca'),
                           ),
                         ],
                       ],
@@ -245,9 +382,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     deleteIcon: const Icon(Icons.close, size: 16),
                     onDeleted: () =>
                         setState(() => _filterModalidade = 'Todos'),
-                    backgroundColor: const Color(
-                      0xFF192E6A,
-                    ).withValues(alpha: 0.1),
+                    backgroundColor: const Color(0xFF192E6A).withOpacity(0.1),
                     labelStyle: const TextStyle(color: Color(0xFF192E6A)),
                   ),
                 ],
@@ -259,52 +394,20 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   Widget _buildHistoryCard(Map<String, dynamic> item) {
-    final firestoreId = item['firestoreId'] as String;
+    final firestoreId = item['firestoreId'] as String? ?? '';
     final modalidade = item['modalidade'] as String? ?? 'Rescisão';
+    final tipoDesligamento = item['tipoDesligamento'] as String?;
 
-    double totalLiquido = 0;
-    if (item['totalLiquido'] != null) {
-      totalLiquido = (item['totalLiquido'] as num?)?.toDouble() ?? 0;
-    } else if (item['salarioLiquido'] != null) {
-      totalLiquido = (item['salarioLiquido'] as num?)?.toDouble() ?? 0;
-    } else if (item['totalSaque'] != null) {
-      totalLiquido = (item['totalSaque'] as num?)?.toDouble() ?? 0;
-    }
-
-    final createdAt = item['createdAt'];
-    String dataFormatada = '—';
-    if (createdAt != null) {
-      try {
-        final dt = (createdAt as dynamic).toDate() as DateTime;
-        dataFormatada = DateFormat('dd/MM/yyyy HH:mm').format(dt);
-      } catch (_) {}
-    }
-
-    IconData iconData;
-    switch (modalidade) {
-      case 'Férias':
-        iconData = Icons.beach_access;
-        break;
-      case 'FGTS':
-        iconData = Icons.account_balance;
-        break;
-      case 'INSS':
-        iconData = Icons.health_and_safety;
-        break;
-      default:
-        iconData = Icons.description;
-    }
+    final totalLiquido = _getTotalLiquido(item);
+    final dataFormatada = _formatDate(item['createdAt']);
+    final iconData = _getIconData(modalidade);
 
     return GestureDetector(
       onTap: () {
-        // Redireciona para a CalculatorResultPage com os dados
-        final calculatorData = {
-          'dataAdmissao':
-              DateTime.tryParse(item['dataAdmissao'] ?? '') ?? DateTime.now(),
-          'dataDemissao':
-              DateTime.tryParse(item['dataDemissao'] ?? '') ?? DateTime.now(),
-        };
-        context.push('/calculator/result', extra: calculatorData);
+        // Passa o docId junto com os dados
+        final extraData = Map<String, dynamic>.from(item);
+        extraData['docId'] = firestoreId;
+        context.push('/history/detail', extra: extraData);
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
@@ -320,30 +423,59 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF192E6A).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(iconData, size: 14, color: const Color(0xFF192E6A)),
-                      const SizedBox(width: 4),
-                      Text(
-                        modalidade,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF192E6A),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF192E6A).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            iconData,
+                            size: 14,
+                            color: const Color(0xFF192E6A),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            modalidade,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF192E6A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (tipoDesligamento != null &&
+                        tipoDesligamento.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          tipoDesligamento,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
                 Text(
                   _currencyFormat.format(totalLiquido),
@@ -394,64 +526,41 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(
+                      const Text(
                         'Toque para ver o extrato completo',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      GestureDetector(
-                        onTap: () => _showDeleteDialog(firestoreId, modalidade),
-                        child: const Text(
-                          'Excluir',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.red,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: Color(0xFF192E6A)),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: Color(0xFF192E6A)),
+                  onSelected: (value) {
+                    if (value == 'delete') {
+                      _showDeleteDialog(firestoreId, modalidade);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Text('Excluir', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showDeleteDialog(String firestoreId, String modalidade) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Excluir cálculo'),
-        content: Text('Deseja excluir o cálculo de $modalidade?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await historyRepository.deleteCalculation(firestoreId);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Cálculo excluído.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text('Excluir', style: TextStyle(color: Colors.red)),
-          ),
-        ],
       ),
     );
   }

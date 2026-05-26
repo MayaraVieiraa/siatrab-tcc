@@ -19,6 +19,10 @@ class _SplashPageState extends State<SplashPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Responsividade controlada
+    final screenWidth = MediaQuery.of(context).size.width.clamp(300.0, 600.0);
+    final responsiveFontSize = screenWidth * 0.045;
+
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -45,14 +49,14 @@ class _SplashPageState extends State<SplashPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Spacer(flex: 3),
-                  const Text(
+                  Text(
                     'SIATRAB',
                     style: TextStyle(
-                      fontSize: 48,
+                      fontSize: (responsiveFontSize * 2.2).clamp(24.0, 40.0),
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
                       letterSpacing: 1.2,
-                      shadows: [
+                      shadows: const [
                         Shadow(
                           offset: Offset(0, 4),
                           blurRadius: 8,
@@ -65,7 +69,7 @@ class _SplashPageState extends State<SplashPage> {
                   Text(
                     'Sistema de Apoio ao\ntrabalhador para cálculos e\ndúvidas trabalhistas!',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: (responsiveFontSize * 0.9).clamp(12.0, 16.0),
                       color: Colors.white.withValues(alpha: 0.7),
                       height: 1.4,
                       fontWeight: FontWeight.w300,

@@ -34,8 +34,10 @@ class CalculatorPage extends ConsumerStatefulWidget {
 }
 
 class _CalculatorPageState extends ConsumerState<CalculatorPage> {
+  bool _empregadorDispensouAviso = false; // Variável de controle
   final _salaryController = TextEditingController();
   final _horasExtrasController = TextEditingController(text: '0');
+  final _horasExtrasFeriadosController = TextEditingController(text: '0');
   final _feriasVencidasController = TextEditingController(text: '0');
   final _formKey = GlobalKey<FormState>();
 
@@ -71,6 +73,7 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
   void dispose() {
     _salaryController.dispose();
     _horasExtrasController.dispose();
+    _horasExtrasFeriadosController.dispose();
     _feriasVencidasController.dispose();
     super.dispose();
   }
@@ -84,10 +87,11 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
     );
     if (picked != null) {
       setState(() {
-        if (isAdmissao)
+        if (isAdmissao) {
           _dataAdmissao = picked;
-        else
+        } else {
           _dataDemissao = picked;
+        }
       });
     }
   }
@@ -166,6 +170,33 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
                     items: _tiposAviso,
                     onChanged: (v) => setState(() => _tipoAviso = v!),
                   ),
+                  // Renderização condicional do Switch para dispensa do aviso
+                  if (_tipoDesligamento == 'Pedido de demissão' &&
+                      _tipoAviso == 'Indenizado') ...[
+                    const SizedBox(height: 16),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: const Color(0xFF192E6A),
+                      title: const Text(
+                        'Empregador dispensou o aviso?',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Se marcado, o valor do aviso não será descontado.',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                      value: _empregadorDispensouAviso,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _empregadorDispensouAviso = value;
+                        });
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   _buildTextField(
                     label: 'Total de Dias de Férias Vencidas',
@@ -188,10 +219,49 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
                   ),
                   const SizedBox(height: 16),
                   _buildTextField(
-                    label: 'Horas Extras no Mês (Quantidade)',
+                    label: 'Horas Extras em Dias Úteis (adicional 50%)',
                     controller: _horasExtrasController,
-                    hint: 'Ex: 10, 50, 200...',
+                    hint: 'Ex: 10, 20...',
                     icon: Icons.more_time_rounded,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    label: 'Horas Extras em Domingos/Feriados (adicional 100%)',
+                    controller: _horasExtrasFeriadosController,
+                    hint: 'Ex: 4, 8...',
+                    icon: Icons.event_busy_rounded,
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Color(0xFF1D4ED8),
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Portaria nº 3.665/2023: horas em domingos e feriados '
+                            'no comércio requerem autorização por CCT e têm '
+                            'adicional mínimo de 100%.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF1D4ED8),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _buildStepperField(
@@ -224,6 +294,7 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
                         ),
                       ),
               ),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -233,31 +304,57 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
   }
 
   void _onCalculate() async {
-    if (_formKey.currentState!.validate()) {
-      if (_dataAdmissao == null || _dataDemissao == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Selecione as datas.')));
-        return;
-      }
-      final input = CalculatorInput(
-        salary: _parseSalary(),
-        tipoAviso: _tipoAviso,
-        feriasVencidas: _feriasVencidasController.text,
-        dependentes: _dependentes,
-        dataAdmissao: _dataAdmissao!,
-        dataDemissao: _dataDemissao!,
-        insalubridade: _adicionalInsalubridade,
-        horasExtras: int.tryParse(_horasExtrasController.text) ?? 0,
-        tipoDesligamento: _tipoDesligamento,
+    if (!_formKey.currentState!.validate()) return;
+
+    // Valida datas
+    if (_dataAdmissao == null || _dataDemissao == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecione as datas de admissão e demissão.'),
+        ),
       );
-      await ref.read(calculatorViewModelProvider.notifier).calculate(input);
-      if (context.mounted) {
-        context.push(
-          '/calculator/result',
-          extra: {'dataAdmissao': _dataAdmissao, 'dataDemissao': _dataDemissao},
-        );
-      }
+      return;
+    }
+
+    // Valida ordem das datas
+    if (_dataDemissao!.isBefore(_dataAdmissao!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('A data de demissão não pode ser anterior à admissão.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Montagem do input com a variável nova repassada para a ViewModel
+    final input = CalculatorInput(
+      salary: _parseSalary(),
+      tipoAviso: _tipoAviso,
+      feriasVencidas: _feriasVencidasController.text,
+      dependentes: _dependentes,
+      dataAdmissao: _dataAdmissao!,
+      dataDemissao: _dataDemissao!,
+      insalubridade: _adicionalInsalubridade,
+      horasExtras: int.tryParse(_horasExtrasController.text) ?? 0,
+      horasExtrasFeriados:
+          int.tryParse(_horasExtrasFeriadosController.text) ?? 0,
+      tipoDesligamento: _tipoDesligamento,
+      empregadorDispensouAviso:
+          _empregadorDispensouAviso, // <-- Variável repassada aqui!
+    );
+
+    await ref.read(calculatorViewModelProvider.notifier).calculate(input);
+
+    if (context.mounted) {
+      context.push(
+        '/calculator/result',
+        extra: {
+          'dataAdmissao': _dataAdmissao,
+          'dataDemissao': _dataDemissao,
+          'tipoDesligamento': _tipoDesligamento,
+        },
+      );
     }
   }
 
@@ -416,6 +513,15 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
           controller: _salaryController,
           keyboardType: TextInputType.number,
           inputFormatters: [_BRLInputFormatter()],
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Informe o salário bruto mensal.';
+            }
+            if (_parseSalary() <= 0) {
+              return 'O salário deve ser maior que zero.';
+            }
+            return null;
+          },
           decoration: InputDecoration(
             prefixText: 'R\$ ',
             filled: true,
@@ -496,7 +602,7 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
                 Text(
                   value == null
                       ? 'Selecionar'
-                      : DateFormat('dd/MM/yy').format(value),
+                      : DateFormat('dd/MM/yyyy').format(value),
                   style: const TextStyle(fontSize: 14),
                 ),
                 const Icon(

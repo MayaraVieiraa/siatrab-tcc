@@ -46,7 +46,7 @@ class ChatViewModel extends Notifier<ChatState> {
       messages: [
         ChatMessage(
           text:
-              'Olá, eu sou Aly! Assistente virtual focada em direito trabalhista!',
+              'Olá! Eu sou o Assistente Trabalhista 2026. Como posso ajudar você hoje?\n\nDigite "Menu" para ver os temas que posso explicar!',
           isUser: false,
           timestamp: DateTime.now(),
         ),
@@ -112,42 +112,48 @@ class ChatViewModel extends Notifier<ChatState> {
 
   List<String> _extractKeywords(String input) {
     final keywordMap = {
-      'intervalo': 'intervalo',
-      'intrajornada': 'intervalo',
-      'repouso': 'intervalo',
-      'alimentação': 'intervalo',
-      'férias': 'ferias',
-      'ferias': 'ferias',
-      'período aquisitivo': 'ferias',
-      'fgts': 'fgts',
-      'fundo de garantia': 'fgts',
-      'inss': 'inss',
-      'previdência': 'inss',
-      'rescisão': 'rescisao',
-      'rescisao': 'rescisao',
-      'demissão': 'rescisao',
-      'demissao': 'rescisao',
-      'aviso prévio': 'aviso_previo',
-      'aviso previo': 'aviso_previo',
-      '13': 'decimo_terceiro',
-      'décimo': 'decimo_terceiro',
-      'decimo': 'decimo_terceiro',
-      'natal': 'decimo_terceiro',
+      // Saudações e Menu
+      'oi': 'saudacao',
+      'olá': 'saudacao',
+      'ola': 'saudacao',
+      'bom dia': 'saudacao',
+      'boa tarde': 'saudacao',
+      'menu': 'menu',
+      'ajuda': 'menu',
+      'opções': 'menu',
+
+      // Tipos de Rescisão
+      'sem justa causa': 'sem_justa_causa',
+      'dispensa': 'sem_justa_causa',
+      'pedido de demissão': 'pedido_demissao',
+      'pedir demissão': 'pedido_demissao',
+      'pedir as contas': 'pedido_demissao',
+      'acordo': 'acordo_comum',
+      '484': 'acordo_comum',
       'justa causa': 'justa_causa',
-      'salário mínimo': 'salario_minimo',
-      'salario minimo': 'salario_minimo',
-      'horas extras': 'horas_extras',
-      'hora extra': 'horas_extras',
+      'falta grave': 'justa_causa',
+      'comparar': 'tabela_comparativa',
+      'diferença': 'tabela_comparativa',
+      'tabela': 'tabela_comparativa',
+
+      // Verbas
+      'aviso': 'aviso_previo',
+      'saldo': 'saldo_salario',
+      '13': 'decimo_terceiro_proporcional',
+      'décimo': 'decimo_terceiro_proporcional',
+      'férias': 'ferias_proporcionais',
+      'ferias': 'ferias_proporcionais',
+      'fgts': 'fgts_multa',
+      'multa': 'fgts_multa',
+
+      // Legislação e Outros
+      'mínimo': 'salario_minimo_2026',
+      'minimo': 'salario_minimo_2026',
+      'feriado': 'feriados_2026',
+      'trabalhar feriado': 'feriados_2026',
       'insalubridade': 'insalubridade',
-      'insalubre': 'insalubridade',
       'periculosidade': 'periculosidade',
-      'perigoso': 'periculosidade',
-      'jornada': 'jornada',
-      'trabalho noturno': 'trabalho_noturno',
-      'noturno': 'trabalho_noturno',
-      'estabilidade': 'estabilidade',
-      'seguro desemprego': 'seguro_desemprego',
-      'seguro-desemprego': 'seguro_desemprego',
+      'seguro': 'seguro_desemprego',
     };
 
     final found = <String>{};
@@ -161,14 +167,7 @@ class ChatViewModel extends Notifier<ChatState> {
 
   String _defaultResponse() {
     return 'Não encontrei informações específicas sobre isso na minha base de conhecimento.\n\n'
-        'Posso ajudar com temas como:\n'
-        '• Férias e 13º salário\n'
-        '• FGTS e INSS\n'
-        '• Rescisão e aviso prévio\n'
-        '• Intervalo intrajornada\n'
-        '• Justa causa\n'
-        '• Horas extras e insalubridade\n\n'
-        'Tente reformular sua pergunta com um desses termos!';
+        'Tente digitar **"Menu"** para ver os tópicos que posso explicar ou use termos como "Aviso Prévio", "FGTS" ou "Acordo".';
   }
 
   void clearError() {
