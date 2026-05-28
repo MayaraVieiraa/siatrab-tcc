@@ -53,10 +53,13 @@ class _FeriasPageState extends State<FeriasPage> {
   }
 
   double _parseSalary() {
-    return double.tryParse(
-          _salaryController.text.replaceAll('.', '').replaceAll(',', '.'),
-        ) ??
-        0.0;
+    String cleanString = _salaryController.text.replaceAll(
+      RegExp(r'[^\d]'),
+      '',
+    );
+    if (cleanString.isEmpty) return 0.0;
+    // Divide por 100 para tratar os centavos da máscara de moeda corretamente
+    return int.parse(cleanString) / 100;
   }
 
   void _calcular() {
@@ -89,41 +92,106 @@ class _FeriasPageState extends State<FeriasPage> {
     });
   }
 
+  // ✅ MÉTODO CORRIGIDO DE SALVAR NO HISTÓRICO
   Future<void> _salvarNoHistorico() async {
-    if (_resultado == null || _isSaving) return;
-    setState(() => _isSaving = true);
-    try {
-      await historyRepository.saveCalculation({
-        'modalidade': 'Férias',
-        'salario': _resultado!['salario'],
-        'feriasProporcional': _resultado!['valorFerias'],
-        'tercoFerias': _resultado!['tercoFerias'],
-        'totalBruto': _resultado!['bruto'],
-        'inss': _resultado!['inss'],
-        'irrf': _resultado!['irrf'],
-        'totalLiquido': _resultado!['liquido'],
-        'dataAdmissao': DateTime.now().toIso8601String(),
-        'dataDemissao': DateTime.now().toIso8601String(),
-      });
+    // Evita múltiplos cliques
+    if (_isSaving) return;
+
+    // Verifica se tem resultado
+    if (_resultado == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Cálculo de Férias salvo com sucesso!'),
-            backgroundColor: Colors.green,
+            content: Text('Nenhum resultado para salvar.'),
+            backgroundColor: Colors.orange,
           ),
         );
       }
-    } catch (e) {
+      return;
+    }
+
+    // Verifica autenticação
+    if (!historyRepository.isUserAuthenticated) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Erro ao salvar cálculo.'),
+            content: Text('Faça login para salvar cálculos!'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final r = _resultado!;
+      final dias = r['dias']?.toInt() ?? 30;
+
+      // Prepara dados garantindo que não há valores null
+      final dataToSave = <String, dynamic>{
+        'modalidade': 'Férias',
+        'diasFerias': dias,
+        'salario': r['salario'] ?? 0.0,
+        'feriasProporcional': r['valorFerias'] ?? 0.0,
+        'tercoFerias': r['tercoFerias'] ?? 0.0,
+        'totalBruto': r['bruto'] ?? 0.0,
+        'inss': r['inss'] ?? 0.0,
+        'irrf': r['irrf'] ?? 0.0,
+        'totalLiquido': r['liquido'] ?? 0.0,
+        'dataCalculo': DateTime.now().toIso8601String(),
+      };
+
+      print('📤 Enviando dados de férias para o histórico: $dataToSave');
+
+      await historyRepository.saveCalculation(dataToSave);
+
+      print('✅ Dados de férias salvos com sucesso!');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('Cálculo de Férias salvo com sucesso!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao salvar férias no histórico: $e');
+      print('Stack trace: $stackTrace');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Erro ao salvar: ${e.toString().replaceAll('Exception: ', '')}',
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -245,14 +313,13 @@ class _FeriasPageState extends State<FeriasPage> {
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: _inputDecoration(
                         label: 'Dias de Férias',
-                        hint: 'Ex: 30, 45, 60...', // ✅ Dica atualizada
+                        hint: 'Ex: 30, 45, 60...',
                       ),
                       validator: (v) {
                         final d = int.tryParse(v ?? '');
                         if (d == null || d <= 0) {
                           return 'Informe dias válidos';
                         }
-                        // ✅ Trava de 30 dias removida para permitir férias acumuladas
                         if (d > 120) {
                           return 'Máximo de 120 dias';
                         }
@@ -412,12 +479,15 @@ class _FeriasPageState extends State<FeriasPage> {
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF192E6A),
+                ),
               )
             : const Icon(Icons.save_outlined, color: Color(0xFF192E6A)),
-        label: const Text(
-          'SALVAR NO HISTÓRICO',
-          style: TextStyle(
+        label: Text(
+          _isSaving ? 'SALVANDO...' : 'SALVAR NO HISTÓRICO',
+          style: const TextStyle(
             color: Color(0xFF192E6A),
             fontWeight: FontWeight.bold,
           ),

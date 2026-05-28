@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Necessário para o TextInputFormatter
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../history/repository/history_repository.dart';
 
-// ✅ Adicionado o formatador de moeda para garantir que o campo de salário funciona
 class _BRLInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
@@ -39,6 +38,7 @@ class _FgtsPageState extends State<FgtsPage> {
   final _formKey = GlobalKey<FormState>();
   String _tipoDesligamento = 'Sem justa causa';
   Map<String, double>? _resultado;
+  bool _isSaving = false; // Para evitar múltiplos cliques
 
   final _tiposDesligamento = [
     'Sem justa causa',
@@ -60,12 +60,13 @@ class _FgtsPageState extends State<FgtsPage> {
     super.dispose();
   }
 
-  // ✅ Atualizado para lidar corretamente com a máscara de moeda
   double _parseSalary() {
-    final text = _salaryController.text
-        .replaceAll('.', '')
-        .replaceAll(',', '.');
-    return double.tryParse(text) ?? 0.0;
+    String cleanString = _salaryController.text.replaceAll(
+      RegExp(r'[^\d]'),
+      '',
+    );
+    if (cleanString.isEmpty) return 0.0;
+    return int.parse(cleanString) / 100;
   }
 
   void _calcular() {
@@ -73,11 +74,7 @@ class _FgtsPageState extends State<FgtsPage> {
     final salary = _parseSalary();
     final meses = int.tryParse(_mesesController.text) ?? 0;
 
-    // ✅ Correção matemática: A cada 12 meses, há 1 mês de 13º e 1/3 de férias que também geram FGTS.
-    // Fator de correção: 1 (salário base) + 0.0833 (13º) + 0.0277 (1/3 férias) ≈ 1.111
     final double fatorProporcionalAnual = 1 + (1 / 12) + (1 / 36);
-
-    // Depósito estimado = (Salário * 8%) * Meses * Fator de verbas sazonais
     final fgtsDepositado = (salary * 0.08) * meses * fatorProporcionalAnual;
 
     double multaFgts = 0;
@@ -107,40 +104,104 @@ class _FgtsPageState extends State<FgtsPage> {
     });
   }
 
+  // ✅ MÉTODO CORRIGIDO DE SALVAR NO HISTÓRICO
   Future<void> _salvarNoHistorico() async {
-    if (_resultado == null) return;
-    try {
-      await historyRepository.saveCalculation({
-        'modalidade': 'FGTS',
-        'tipoDesligamento': _tipoDesligamento,
-        'salario': _resultado!['salario'],
-        'mesesTrabalhados': _resultado!['meses']?.toInt(),
-        'depositoMensal': _resultado!['depositoMensal'],
-        'saldoFgts': _resultado!['saldoFgts'],
-        'multaFgts': _resultado!['multa'],
-        'saqueDisponivel': _resultado!['saqueDisponivel'],
-        'totalLiquido':
-            _resultado!['totalSaque'], // Neste contexto de ferramenta isolada, o líquido é o que ele pode sacar
-        'dataAdmissao': DateTime.now()
-            .toIso8601String(), // Poderia pedir as datas exatas, mas o fallback atual atende a lógica de histórico.
-        'dataDemissao': DateTime.now().toIso8601String(),
-      });
+    // Evita múltiplos cliques
+    if (_isSaving) return;
+
+    // Verifica se tem resultado
+    if (_resultado == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Cálculo de FGTS salvo com sucesso!'),
-            backgroundColor: Colors.green,
+            content: Text('Nenhum resultado para salvar.'),
+            backgroundColor: Colors.orange,
           ),
         );
       }
-    } catch (e) {
+      return;
+    }
+
+    // Verifica autenticação
+    if (!historyRepository.isUserAuthenticated) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Erro ao salvar cálculo.'),
-            backgroundColor: Colors.red,
+            content: Text('Faça login para salvar cálculos!'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
           ),
         );
+      }
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final r = _resultado!;
+
+      // Prepara dados garantindo que não há valores null
+      final dataToSave = <String, dynamic>{
+        'modalidade': 'FGTS',
+        'tipoDesligamento': _tipoDesligamento,
+        'salario': r['salario'] ?? 0.0,
+        'mesesTrabalhados': (r['meses'] ?? 0).toInt(),
+        'depositoMensal': r['depositoMensal'] ?? 0.0,
+        'saldoFgts': r['saldoFgts'] ?? 0.0,
+        'multaFgts': r['multa'] ?? 0.0,
+        'saqueDisponivel': r['saqueDisponivel'] ?? 0.0,
+        'totalLiquido': r['totalSaque'] ?? 0.0,
+        'dataCalculo': DateTime.now().toIso8601String(),
+      };
+
+      print('📤 Enviando dados para o histórico: $dataToSave');
+
+      await historyRepository.saveCalculation(dataToSave);
+
+      print('✅ Dados salvos com sucesso!');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('Cálculo de FGTS salvo com sucesso!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao salvar no histórico: $e');
+      print('Stack trace: $stackTrace');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Erro ao salvar: ${e.toString().replaceAll('Exception: ', '')}',
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
       }
     }
   }
@@ -163,8 +224,7 @@ class _FgtsPageState extends State<FgtsPage> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          onPressed: () =>
-              context.pop(), // Note: se a estrutura for baseada em go_router
+          onPressed: () => context.pop(),
         ),
         title: const Text(
           'Calcular FGTS',
@@ -233,7 +293,7 @@ class _FgtsPageState extends State<FgtsPage> {
                       TextFormField(
                         controller: _salaryController,
                         keyboardType: TextInputType.number,
-                        inputFormatters: [_BRLInputFormatter()], // ✅ Aplicado
+                        inputFormatters: [_BRLInputFormatter()],
                         decoration: _inputDecoration(prefixText: 'R\$ '),
                         validator: (v) {
                           if (v == null || v.isEmpty)
@@ -250,7 +310,7 @@ class _FgtsPageState extends State<FgtsPage> {
                         keyboardType: TextInputType.number,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
-                        ], // ✅ Bloqueia caracteres
+                        ],
                         decoration: _inputDecoration(hintText: 'Ex: 12, 24...'),
                         validator: (v) => (v == null || v.isEmpty)
                             ? 'Informe os meses'
@@ -299,6 +359,7 @@ class _FgtsPageState extends State<FgtsPage> {
               const SizedBox(height: 20),
               _buildResultado(),
               const SizedBox(height: 12),
+              // Botão de salvar com loading
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.all(16),
@@ -307,11 +368,20 @@ class _FgtsPageState extends State<FgtsPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onPressed: _salvarNoHistorico,
-                icon: const Icon(Icons.save_outlined, color: Color(0xFF192E6A)),
-                label: const Text(
-                  'SALVAR NO HISTÓRICO',
-                  style: TextStyle(
+                onPressed: _isSaving ? null : _salvarNoHistorico,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF192E6A),
+                        ),
+                      )
+                    : const Icon(Icons.save_outlined, color: Color(0xFF192E6A)),
+                label: Text(
+                  _isSaving ? 'SALVANDO...' : 'SALVAR NO HISTÓRICO',
+                  style: const TextStyle(
                     color: Color(0xFF192E6A),
                     fontWeight: FontWeight.bold,
                   ),
@@ -322,7 +392,6 @@ class _FgtsPageState extends State<FgtsPage> {
           ],
         ),
       ),
-      // Mantenha o seu _buildBottomNav original aqui se necessário
     );
   }
 
@@ -363,7 +432,6 @@ class _FgtsPageState extends State<FgtsPage> {
             _row('Depósito mensal base (8%):', r['depositoMensal']!),
             _row('Saldo estimado na conta:', r['saldoFgts']!),
 
-            // Nota sobre JAM
             Padding(
               padding: const EdgeInsets.only(bottom: 16, top: 4),
               child: Text(

@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ✅ Importação necessária para os InputFormatters
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../history/repository/history_repository.dart';
 import '../../../shared/utils/tax_utils.dart';
 
-// ✅ Adicionado o formatador de moeda para o campo de salário
 class _BRLInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
@@ -51,10 +50,12 @@ class _InssPageState extends State<InssPage> {
   }
 
   double _parseSalary() {
-    return double.tryParse(
-          _salaryController.text.replaceAll('.', '').replaceAll(',', '.'),
-        ) ??
-        0.0;
+    String cleanString = _salaryController.text.replaceAll(
+      RegExp(r'[^\d]'),
+      '',
+    );
+    if (cleanString.isEmpty) return 0.0;
+    return int.parse(cleanString) / 100;
   }
 
   void _calcular() {
@@ -78,38 +79,103 @@ class _InssPageState extends State<InssPage> {
     });
   }
 
+  // ✅ MÉTODO CORRIGIDO DE SALVAR NO HISTÓRICO
   Future<void> _salvarNoHistorico() async {
-    if (_resultado == null || _isSaving) return;
-    setState(() => _isSaving = true);
-    try {
-      await historyRepository.saveCalculation({
-        'modalidade': 'INSS',
-        'salario': _resultado!['salarioBruto'],
-        'inss': _resultado!['descontoINSS'],
-        'irrf': _resultado!['descontoIRRF'],
-        'totalLiquido': _resultado!['salarioLiquido'],
-        'dataAdmissao': DateTime.now().toIso8601String(),
-        'dataDemissao': DateTime.now().toIso8601String(),
-      });
+    // Evita múltiplos cliques
+    if (_isSaving) return;
+
+    // Verifica se tem resultado
+    if (_resultado == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Cálculo de INSS salvo com sucesso!'),
-            backgroundColor: Colors.green,
+            content: Text('Nenhum resultado para salvar.'),
+            backgroundColor: Colors.orange,
           ),
         );
       }
-    } catch (e) {
+      return;
+    }
+
+    // Verifica autenticação
+    if (!historyRepository.isUserAuthenticated) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Erro ao salvar no histórico.'),
+            content: Text('Faça login para salvar cálculos!'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final r = _resultado!;
+
+      // Prepara dados garantindo que não há valores null
+      final dataToSave = <String, dynamic>{
+        'modalidade': 'INSS/IRRF',
+        'salario': r['salarioBruto'] ?? 0.0,
+        'inss': r['descontoINSS'] ?? 0.0,
+        'irrf': r['descontoIRRF'] ?? 0.0,
+        'totalDescontos': r['totalDescontos'] ?? 0.0,
+        'totalLiquido': r['salarioLiquido'] ?? 0.0,
+        'aliquotaEfetivaINSS': r['aliquotaEfetivaINSS'] ?? 0.0,
+        'dataCalculo': DateTime.now().toIso8601String(),
+      };
+
+      print('📤 Enviando dados de INSS para o histórico: $dataToSave');
+
+      await historyRepository.saveCalculation(dataToSave);
+
+      print('✅ Dados de INSS salvos com sucesso!');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('Cálculo de INSS salvo com sucesso!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao salvar INSS no histórico: $e');
+      print('Stack trace: $stackTrace');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Erro ao salvar: ${e.toString().replaceAll('Exception: ', '')}',
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -140,7 +206,6 @@ class _InssPageState extends State<InssPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Info card
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -160,8 +225,7 @@ class _InssPageState extends State<InssPage> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Tabela progressiva INSS 2026 (Port. MPS/MF nº 02/2026). '
-                      'IRRF com isenção até R\$ 5.000,00 (Lei nº 14.848/2024).',
+                      'Tabela progressiva INSS 2026. IRRF com isenção até R\$ 5.000,00.',
                       style: TextStyle(fontSize: 12, color: Color(0xFF192E6A)),
                     ),
                   ),
@@ -212,9 +276,7 @@ class _InssPageState extends State<InssPage> {
               TextFormField(
                 controller: _salaryController,
                 keyboardType: TextInputType.number,
-                inputFormatters: [
-                  _BRLInputFormatter(),
-                ], // ✅ Formatador BRL aplicado
+                inputFormatters: [_BRLInputFormatter()],
                 decoration: _inputDecoration(
                   label: 'Salário Bruto Mensal',
                   prefixText: 'R\$ ',
@@ -230,9 +292,7 @@ class _InssPageState extends State<InssPage> {
               TextFormField(
                 controller: _dependentesController,
                 keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                ], // ✅ Bloqueia letras e pontos
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: _inputDecoration(
                   label: 'Número de Dependentes (IRRF)',
                 ),
@@ -490,12 +550,15 @@ class _InssPageState extends State<InssPage> {
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF192E6A),
+                ),
               )
             : const Icon(Icons.save_outlined, color: Color(0xFF192E6A)),
-        label: const Text(
-          'SALVAR NO HISTÓRICO',
-          style: TextStyle(
+        label: Text(
+          _isSaving ? 'SALVANDO...' : 'SALVAR NO HISTÓRICO',
+          style: const TextStyle(
             color: Color(0xFF192E6A),
             fontWeight: FontWeight.bold,
           ),

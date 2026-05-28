@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "siatrab-53f04"
-  }
+    "default": "siatrab-53f04",
+    "production": "siatrab-53f04"
+  },
+  "targets": {},
+  "etags": {}
 }

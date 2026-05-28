@@ -16,23 +16,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // Insalubridade:   Art. 192 CLT (base: salário mínimo)
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// 1. MODELOS DE ENTRADA E SAÍDA
-// -----------------------------------------------------------------------------
-
 class CalculatorInput {
   final double salary;
-  final String tipoAviso; // 'Indenizado' ou 'Trabalhado'
-  final int feriasVencidasDias; // Dias de férias vencidas (ex: 30, 0)
+  final String tipoAviso;
+  final int feriasVencidasDias;
   final int dependentes;
   final DateTime dataAdmissao;
   final DateTime dataDemissao;
-  final String insalubridade; // '10%', '20%', '40%' ou 'Nenhum'
-  final int horasExtras; // Horas extras em dias úteis (50%)
-  final int horasExtrasFeriados; // Horas extras em domingos/feriados (100%)
-  final String
-  tipoDesligamento; // 'Sem justa causa', 'Pedido de demissão', 'Acordo mútuo', 'Com justa causa'
-  final bool empregadorDispensouAviso; // Apenas para pedido de demissão
+  final String insalubridade;
+  final int horasExtras;
+  final int horasExtrasFeriados;
+  final String tipoDesligamento;
+  final bool empregadorDispensouAviso;
 
   CalculatorInput({
     required this.salary,
@@ -117,21 +112,12 @@ class CalculatorState {
   }
 }
 
-// -----------------------------------------------------------------------------
-// 2. VIEWMODEL (VERSÃO COM FGTS AUTOMÁTICO)
-// -----------------------------------------------------------------------------
-
 class CalculatorViewModel extends Notifier<CalculatorState> {
-  // ==========================================================================
-  // CONSTANTES CENTRALIZADAS 2026 (fácil manutenção anual)
-  // ==========================================================================
-  static const double SALARIO_MINIMO = 1621.00; // Decreto nº 12.797/2025
-  static const double DEDUCAO_POR_DEPENDENTE = 189.59; // IRRF 2026
-  static const double FAIXA_ISENCAO_IRRF = 5000.00; // Lei nº 14.848/2024
-  static const double TETO_INSS =
-      951.00; // Portaria Interministerial MPS/MF nº 02/2026
+  static const double SALARIO_MINIMO = 1621.00;
+  static const double DEDUCAO_POR_DEPENDENTE = 189.59;
+  static const double FAIXA_ISENCAO_IRRF = 5000.00;
+  static const double TETO_INSS = 951.00;
 
-  // Tabela INSS 2026
   static const double INSS_FAIXA1_TETO = 1621.00;
   static const double INSS_FAIXA1_ALIQUOTA = 0.075;
   static const double INSS_FAIXA2_TETO = 2902.84;
@@ -141,7 +127,6 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
   static const double INSS_FAIXA4_TETO = 8475.55;
   static const double INSS_FAIXA4_ALIQUOTA = 0.14;
 
-  // Tabela IRRF 2026
   static const double IRRF_FAIXA1_TETO = 6000.00;
   static const double IRRF_FAIXA1_ALIQUOTA = 0.075;
   static const double IRRF_FAIXA1_DEDUCAO = 375.00;
@@ -163,63 +148,41 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      // -----------------------------------------------------------------------
-      // DADOS TEMPORAIS BÁSICOS
-      // -----------------------------------------------------------------------
       final int diasNoMesDemissao = i.dataDemissao.day;
-
-      // Meses totais trabalhados (para referência)
       final int mesesTrabalhadosTotal = _mesesEntreDatas(
         i.dataAdmissao,
         i.dataDemissao,
       );
 
-      // -----------------------------------------------------------------------
-      // INSALUBRIDADE (Art. 192 CLT)
-      // Base: salário mínimo, NÃO o salário do trabalhador
-      // -----------------------------------------------------------------------
+      // Insalubridade (Art. 192 CLT — base: salário mínimo)
       double valorInsalubridade = 0;
-      if (i.insalubridade.contains('10%')) {
+      if (i.insalubridade.contains('10%'))
         valorInsalubridade = SALARIO_MINIMO * 0.10;
-      } else if (i.insalubridade.contains('20%')) {
+      else if (i.insalubridade.contains('20%'))
         valorInsalubridade = SALARIO_MINIMO * 0.20;
-      } else if (i.insalubridade.contains('40%')) {
+      else if (i.insalubridade.contains('40%'))
         valorInsalubridade = SALARIO_MINIMO * 0.40;
-      }
 
-      // -----------------------------------------------------------------------
-      // BASE DE CÁLCULO PARA VERBAS RESCISÓRIAS
-      // -----------------------------------------------------------------------
       final double baseCalculo = i.salary + valorInsalubridade;
-
-      // Saldo de salário e insalubridade proporcionais
       final double saldoSalario = (i.salary / 30) * diasNoMesDemissao;
       final double insalubProp = (valorInsalubridade / 30) * diasNoMesDemissao;
 
-      // -----------------------------------------------------------------------
-      // HORAS EXTRAS (Art. 59 CLT + Portaria nº 3.665/2023)
-      // Dias úteis: 50% | Domingos/feriados: 100%
-      // -----------------------------------------------------------------------
+      // Horas extras (Art. 59 CLT + Portaria nº 3.665/2023)
       final double valorHoraNormal = baseCalculo / 220;
       final double horasExtrasValor =
           (i.horasExtras * valorHoraNormal * 1.5) +
           (i.horasExtrasFeriados * valorHoraNormal * 2.0);
 
-      // Média mensal de horas extras para integrar 13º e férias (Súmula 347 TST)
-      final double mediaHorasExtrasMensal = _calcularMediaHorasExtras(
+      final double mediaHorasExtras = _calcularMediaHorasExtras(
         i.horasExtras,
         i.horasExtrasFeriados,
         baseCalculo,
       );
 
-      // -----------------------------------------------------------------------
-      // BASE PARA 13º E FÉRIAS (inclui horas extras - Súmula 347 TST)
-      // -----------------------------------------------------------------------
-      final double basePara13eFerias = baseCalculo + mediaHorasExtrasMensal;
+      // Base para 13º e férias (inclui horas extras — Súmula 347 TST)
+      final double basePara13eFerias = baseCalculo + mediaHorasExtras;
 
-      // -----------------------------------------------------------------------
-      // AVISO PRÉVIO PROPORCIONAL (Art. 487 CLT + Lei nº 12.506/2011)
-      // -----------------------------------------------------------------------
+      // Aviso prévio proporcional (Art. 487 CLT + Lei nº 12.506/2011)
       final int anosCompletos = _anosCompletosEntreDatas(
         i.dataAdmissao,
         i.dataDemissao,
@@ -237,29 +200,22 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
             dataProjetada = i.dataDemissao.add(Duration(days: diasAviso));
           }
           break;
-
         case 'Acordo mútuo':
-          // Art. 484-A CLT: aviso indenizado = 50%
           if (i.tipoAviso == 'Indenizado') {
             avisoPrevioValor = ((baseCalculo / 30) * diasAviso) * 0.5;
             dataProjetada = i.dataDemissao.add(Duration(days: diasAviso));
           }
           break;
-
         case 'Pedido de demissão':
           if (i.tipoAviso == 'Indenizado' && !i.empregadorDispensouAviso) {
             descontoAviso = (baseCalculo / 30) * diasAviso;
           }
           break;
-
         case 'Com justa causa':
-          // Sem aviso prévio
           break;
       }
 
-      // -----------------------------------------------------------------------
-      // FÉRIAS PROPORCIONAIS + 1/3 (Art. 7º, XVII CF/88 + Arts. 129-130 CLT)
-      // -----------------------------------------------------------------------
+      // Férias proporcionais + 1/3
       double feriasProporcional = 0;
       double tercoFeriasProporcional = 0;
 
@@ -268,67 +224,54 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
           i.dataAdmissao,
           dataProjetada,
         );
-
         feriasProporcional = (basePara13eFerias / 12) * mesesAquisitivos;
         tercoFeriasProporcional = feriasProporcional / 3;
       }
 
-      // -----------------------------------------------------------------------
-      // FÉRIAS VENCIDAS (período anterior completo não gozado)
-      // -----------------------------------------------------------------------
+      // Férias vencidas
       double feriasVencidasValor = 0;
       double tercoFeriasVencidas = 0;
-
       if (i.feriasVencidasDias > 0) {
         feriasVencidasValor = (basePara13eFerias / 30) * i.feriasVencidasDias;
         tercoFeriasVencidas = feriasVencidasValor / 3;
       }
 
-      // -----------------------------------------------------------------------
-      // 13º SALÁRIO PROPORCIONAL (Lei nº 4.090/62)
-      // -----------------------------------------------------------------------
+      // ── 13º Salário Proporcional (Lei nº 4.090/62) ──────────────────────
+      // REGRA CORRETA: O 13º é anual — na rescisão, paga-se apenas os avos
+      // do ANO CORRENTE (janeiro até o mês da demissão/projeção).
+      // Não é acumulativo por anos de casa — o empregador quita o 13º de
+      // cada ano em dezembro ou na rescisão do mesmo ano.
       double decimoTerceiro = 0;
-
       if (i.tipoDesligamento != 'Com justa causa') {
         final int avos13 = _avosDecimoTerceiro(i.dataAdmissao, dataProjetada);
         decimoTerceiro = (basePara13eFerias / 12) * avos13;
       }
 
-      // -----------------------------------------------------------------------
-      // FGTS - CÁLCULO AUTOMÁTICO (Art. 15 e 18 da Lei nº 8.036/90)
-      // ✅ O FGTS é calculado automaticamente, sem depender do usuário
-      // ✅ Inclui projeção de 13º e 1/3 de férias
-      // =========================================================================
+      // FGTS automático (Art. 15 e 18 da Lei nº 8.036/90)
       final double fatorProporcionalAnual = 1 + (1 / 12) + (1 / 36);
       final double fgtsDepositoEstimado =
           (baseCalculo * 0.08) * mesesTrabalhadosTotal * fatorProporcionalAnual;
 
       double multaFgts = 0;
       double fgtsSaqueDisponivel = 0;
-
       switch (i.tipoDesligamento) {
         case 'Sem justa causa':
           multaFgts = fgtsDepositoEstimado * 0.40;
           fgtsSaqueDisponivel = fgtsDepositoEstimado;
           break;
-
         case 'Acordo mútuo':
-          multaFgts = fgtsDepositoEstimado * 0.20; // Art. 484-A CLT
+          multaFgts = fgtsDepositoEstimado * 0.20;
           fgtsSaqueDisponivel = fgtsDepositoEstimado * 0.80;
           break;
-
         default:
           multaFgts = 0;
           fgtsSaqueDisponivel = 0;
       }
 
-      // -----------------------------------------------------------------------
-      // DESCONTOS — INSS E IRRF
-      // -----------------------------------------------------------------------
+      // Descontos INSS e IRRF
       final double baseMes = saldoSalario + insalubProp + horasExtrasValor;
       final double inssMes = _calculateInss(baseMes);
       final double irrfMes = _calculateIrrf(baseMes - inssMes, i.dependentes);
-
       final double inss13 = _calculateInss(decimoTerceiro);
       final double irrf13 = _calculateIrrf(
         decimoTerceiro - inss13,
@@ -338,9 +281,6 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
       final double inssTotal = inssMes + inss13;
       final double irrfTotal = irrfMes + irrf13;
 
-      // -----------------------------------------------------------------------
-      // TOTAIS FINAIS
-      // -----------------------------------------------------------------------
       final double totalBruto =
           saldoSalario +
           insalubProp +
@@ -390,23 +330,16 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
   // MÉTODOS AUXILIARES
   // ==========================================================================
 
-  /// Calcula média mensal de horas extras para integrar 13º e férias
-  /// (Súmula 347 do TST)
   double _calcularMediaHorasExtras(
     int horasNormais,
     int horasFeriados,
     double baseCalculo,
   ) {
     if (horasNormais == 0 && horasFeriados == 0) return 0;
-
     final double valorHora = baseCalculo / 220;
-    final double valorTotalHoras =
-        (horasNormais * valorHora * 1.5) + (horasFeriados * valorHora * 2.0);
-
-    return valorTotalHoras;
+    return (horasNormais * valorHora * 1.5) + (horasFeriados * valorHora * 2.0);
   }
 
-  /// Anos COMPLETOS entre duas datas usando calendário gregoriano.
   int _anosCompletosEntreDatas(DateTime inicio, DateTime fim) {
     int anos = fim.year - inicio.year;
     if (fim.month < inicio.month ||
@@ -416,14 +349,12 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
     return anos < 0 ? 0 : anos;
   }
 
-  /// Meses COMPLETOS entre duas datas (para FGTS e referência)
   int _mesesEntreDatas(DateTime inicio, DateTime fim) {
     int meses = (fim.year - inicio.year) * 12 + (fim.month - inicio.month);
     if (fim.day >= inicio.day) meses++;
     return meses < 0 ? 0 : meses;
   }
 
-  /// Meses no período aquisitivo ATUAL de férias
   int _mesesNoPeriodoAquisitivo(DateTime admissao, DateTime dataProjetada) {
     final int totalMeses = _mesesEntreDatas(admissao, dataProjetada);
     int mesesNoPeriodo = totalMeses % 12;
@@ -431,74 +362,72 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
     return mesesNoPeriodo;
   }
 
-  /// Avos do 13º salário (suporta virada de ano)
+  /// 13º Salário — avos do ANO CORRENTE apenas (Lei nº 4.090/62).
+  ///
+  /// O 13º NÃO é acumulativo por anos de casa. A cada ano, o empregador
+  /// deve pagar 1 salário completo. Na rescisão, paga-se apenas a fração
+  /// do ano em curso: de janeiro (ou da admissão, se for o mesmo ano) até
+  /// o mês da demissão/projeção com aviso.
+  ///
+  /// Regra dos avos: se trabalhou 15 dias ou mais no mês, conta como 1 avo.
   int _avosDecimoTerceiro(DateTime admissao, DateTime dataProjetada) {
     int avos = 0;
+    final int anoCorrente = dataProjetada.year;
 
-    for (int ano = admissao.year; ano <= dataProjetada.year; ano++) {
-      final int mesInicio = (ano == admissao.year) ? admissao.month : 1;
-      final int mesFim = (ano == dataProjetada.year) ? dataProjetada.month : 12;
+    // Início da contagem: janeiro do ano corrente,
+    // ou mês de admissão se foi contratado neste mesmo ano.
+    final int mesInicio = admissao.year == anoCorrente ? admissao.month : 1;
+    final int mesFim = dataProjetada.month;
 
-      for (int mes = mesInicio; mes <= mesFim; mes++) {
-        final DateTime ultimoDiaMes = DateTime(ano, mes + 1, 0);
+    for (int mes = mesInicio; mes <= mesFim; mes++) {
+      final DateTime ultimoDiaMes = DateTime(anoCorrente, mes + 1, 0);
 
-        final int diaInicio = (ano == admissao.year && mes == admissao.month)
-            ? admissao.day
-            : 1;
+      // Dia de início no mês: 1 (salvo mês de admissão no ano corrente)
+      final int diaInicio =
+          (admissao.year == anoCorrente && mes == admissao.month)
+          ? admissao.day
+          : 1;
 
-        final int diaFim =
-            (ano == dataProjetada.year && mes == dataProjetada.month)
-            ? dataProjetada.day
-            : ultimoDiaMes.day;
+      // Dia de fim no mês: último dia do mês (salvo mês da demissão)
+      final int diaFim = (mes == dataProjetada.month)
+          ? dataProjetada.day
+          : ultimoDiaMes.day;
 
-        final int diasTrabalhados = diaFim - diaInicio + 1;
+      final int diasTrabalhados = diaFim - diaInicio + 1;
 
-        if (diasTrabalhados >= 15) avos++;
-      }
+      // Conta o avo se trabalhou 15 dias ou mais no mês
+      if (diasTrabalhados >= 15) avos++;
     }
 
-    return avos;
+    return avos.clamp(0, 12);
   }
 
-  // ==========================================================================
-  // INSS 2026 (usando constantes centralizadas)
-  // ==========================================================================
+  // INSS 2026 — tabela progressiva
   double _calculateInss(double salary) {
     if (salary <= 0) return 0;
-
-    if (salary <= INSS_FAIXA1_TETO) {
-      return salary * INSS_FAIXA1_ALIQUOTA;
-    }
-
+    if (salary <= INSS_FAIXA1_TETO) return salary * INSS_FAIXA1_ALIQUOTA;
     if (salary <= INSS_FAIXA2_TETO) {
       return (INSS_FAIXA1_TETO * INSS_FAIXA1_ALIQUOTA) +
           ((salary - INSS_FAIXA1_TETO) * INSS_FAIXA2_ALIQUOTA);
     }
-
     if (salary <= INSS_FAIXA3_TETO) {
       return (INSS_FAIXA1_TETO * INSS_FAIXA1_ALIQUOTA) +
           ((INSS_FAIXA2_TETO - INSS_FAIXA1_TETO) * INSS_FAIXA2_ALIQUOTA) +
           ((salary - INSS_FAIXA2_TETO) * INSS_FAIXA3_ALIQUOTA);
     }
-
     if (salary <= INSS_FAIXA4_TETO) {
       return (INSS_FAIXA1_TETO * INSS_FAIXA1_ALIQUOTA) +
           ((INSS_FAIXA2_TETO - INSS_FAIXA1_TETO) * INSS_FAIXA2_ALIQUOTA) +
           ((INSS_FAIXA3_TETO - INSS_FAIXA2_TETO) * INSS_FAIXA3_ALIQUOTA) +
           ((salary - INSS_FAIXA3_TETO) * INSS_FAIXA4_ALIQUOTA);
     }
-
     return TETO_INSS;
   }
 
-  // ==========================================================================
-  // IRRF 2026 (usando constantes centralizadas)
-  // ==========================================================================
+  // IRRF 2026
   double _calculateIrrf(double base, int dependentes) {
     if (base <= 0) return 0;
-
     final double baseCalculo = base - (dependentes * DEDUCAO_POR_DEPENDENTE);
-
     if (baseCalculo <= FAIXA_ISENCAO_IRRF) return 0;
     if (baseCalculo <= IRRF_FAIXA1_TETO) {
       return (baseCalculo * IRRF_FAIXA1_ALIQUOTA) - IRRF_FAIXA1_DEDUCAO;
@@ -512,10 +441,6 @@ class CalculatorViewModel extends Notifier<CalculatorState> {
     return (baseCalculo * IRRF_FAIXA4_ALIQUOTA) - IRRF_FAIXA4_DEDUCAO;
   }
 }
-
-// -----------------------------------------------------------------------------
-// 3. PROVIDER
-// -----------------------------------------------------------------------------
 
 final calculatorViewModelProvider =
     NotifierProvider<CalculatorViewModel, CalculatorState>(
