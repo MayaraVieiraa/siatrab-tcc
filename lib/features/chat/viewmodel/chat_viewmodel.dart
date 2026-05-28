@@ -55,10 +55,11 @@ class ChatViewModel extends Notifier<ChatState> {
   }
 
   Future<void> sendMessage(String text) async {
-    if (text.trim().isEmpty) return;
+    final input = text.trim();
+    if (input.isEmpty) return;
 
     final userMessage = ChatMessage(
-      text: text.trim(),
+      text: input,
       isUser: true,
       timestamp: DateTime.now(),
     );
@@ -69,7 +70,7 @@ class ChatViewModel extends Notifier<ChatState> {
     );
 
     try {
-      final response = await _searchKnowledgeBase(text.trim());
+      final response = await _searchKnowledgeBase(input);
 
       final botMessage = ChatMessage(
         text: response,
@@ -90,88 +91,41 @@ class ChatViewModel extends Notifier<ChatState> {
   }
 
   Future<String> _searchKnowledgeBase(String input) async {
-    final lower = input.toLowerCase();
+    final query = input.toLowerCase();
 
-    // Extrai keywords da pergunta do usuário
-    final keywords = _extractKeywords(lower);
-
-    if (keywords.isEmpty) return _defaultResponse();
-
-    // Busca no Firestore por documentos que contenham alguma das keywords
-    final snapshot = await _firestore
+    // 1. Tenta busca exata nas keywords
+    final exactMatch = await _firestore
         .collection('knowledge_base')
-        .where('keywords', arrayContainsAny: keywords)
+        .where('keywords', arrayContains: query)
         .limit(1)
         .get();
 
-    if (snapshot.docs.isEmpty) return _defaultResponse();
+    if (exactMatch.docs.isNotEmpty) {
+      return exactMatch.docs.first.data()['resposta'] as String;
+    }
 
-    final doc = snapshot.docs.first.data();
-    return doc['resposta'] as String? ?? _defaultResponse();
-  }
+    // 2. Tenta busca parcial simples (verifica se alguma keyword contém a query ou vice-versa)
+    // Nota: O Firestore não suporta busca por "contém" em arrays de forma nativa e eficiente sem índices externos,
+    // então vamos buscar todos os documentos e filtrar localmente (já que a base é pequena).
+    final allDocs = await _firestore.collection('knowledge_base').get();
 
-  List<String> _extractKeywords(String input) {
-    final keywordMap = {
-      // Saudações e Menu
-      'oi': 'saudacao',
-      'olá': 'saudacao',
-      'ola': 'saudacao',
-      'bom dia': 'saudacao',
-      'boa tarde': 'saudacao',
-      'menu': 'menu',
-      'ajuda': 'menu',
-      'opções': 'menu',
+    for (final doc in allDocs.docs) {
+      final data = doc.data();
+      final keywords = List<String>.from(data['keywords'] ?? []);
 
-      // Tipos de Rescisão
-      'sem justa causa': 'sem_justa_causa',
-      'dispensa': 'sem_justa_causa',
-      'pedido de demissão': 'pedido_demissao',
-      'pedir demissão': 'pedido_demissao',
-      'pedir as contas': 'pedido_demissao',
-      'acordo': 'acordo_comum',
-      '484': 'acordo_comum',
-      'justa causa': 'justa_causa',
-      'falta grave': 'justa_causa',
-      'comparar': 'tabela_comparativa',
-      'diferença': 'tabela_comparativa',
-      'tabela': 'tabela_comparativa',
-
-      // Verbas
-      'aviso': 'aviso_previo',
-      'saldo': 'saldo_salario',
-      '13': 'decimo_terceiro_proporcional',
-      'décimo': 'decimo_terceiro_proporcional',
-      'férias': 'ferias_proporcionais',
-      'ferias': 'ferias_proporcionais',
-      'fgts': 'fgts_multa',
-      'multa': 'fgts_multa',
-
-      // Legislação e Outros
-      'mínimo': 'salario_minimo_2026',
-      'minimo': 'salario_minimo_2026',
-      'feriado': 'feriados_2026',
-      'trabalhar feriado': 'feriados_2026',
-      'insalubridade': 'insalubridade',
-      'periculosidade': 'periculosidade',
-      'seguro': 'seguro_desemprego',
-    };
-
-    final found = <String>{};
-    for (final entry in keywordMap.entries) {
-      if (input.contains(entry.key)) {
-        found.add(entry.value);
+      for (final keyword in keywords) {
+        if (query.contains(keyword) || keyword.contains(query)) {
+          return data['resposta'] as String;
+        }
       }
     }
-    return found.toList();
+
+    return _defaultResponse();
   }
 
   String _defaultResponse() {
     return 'Não encontrei informações específicas sobre isso na minha base de conhecimento.\n\n'
         'Tente digitar **"Menu"** para ver os tópicos que posso explicar ou use termos como "Aviso Prévio", "FGTS" ou "Acordo".';
-  }
-
-  void clearError() {
-    state = state.copyWith(errorMessage: null);
   }
 
   void clearChat() {

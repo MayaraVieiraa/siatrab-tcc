@@ -1,7 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Necessário para o TextInputFormatter
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../history/repository/history_repository.dart';
+
+// ✅ Adicionado o formatador de moeda para garantir que o campo de salário funciona
+class _BRLInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.isEmpty) return newValue.copyWith(text: '');
+    final value = int.parse(digits);
+    final formatted = NumberFormat.currency(
+      locale: 'pt_BR',
+      symbol: '',
+      decimalDigits: 2,
+    ).format(value / 100);
+    return newValue.copyWith(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
 
 class FgtsPage extends StatefulWidget {
   const FgtsPage({super.key});
@@ -37,11 +60,12 @@ class _FgtsPageState extends State<FgtsPage> {
     super.dispose();
   }
 
+  // ✅ Atualizado para lidar corretamente com a máscara de moeda
   double _parseSalary() {
-    return double.tryParse(
-          _salaryController.text.replaceAll('.', '').replaceAll(',', '.'),
-        ) ??
-        0.0;
+    final text = _salaryController.text
+        .replaceAll('.', '')
+        .replaceAll(',', '.');
+    return double.tryParse(text) ?? 0.0;
   }
 
   void _calcular() {
@@ -49,24 +73,23 @@ class _FgtsPageState extends State<FgtsPage> {
     final salary = _parseSalary();
     final meses = int.tryParse(_mesesController.text) ?? 0;
 
-    // Depósito de 8% por mês trabalhado (Art. 15 Lei nº 8.036/90)
-    final fgtsDepositado = salary * 0.08 * meses;
+    // ✅ Correção matemática: A cada 12 meses, há 1 mês de 13º e 1/3 de férias que também geram FGTS.
+    // Fator de correção: 1 (salário base) + 0.0833 (13º) + 0.0277 (1/3 férias) ≈ 1.111
+    final double fatorProporcionalAnual = 1 + (1 / 12) + (1 / 36);
+
+    // Depósito estimado = (Salário * 8%) * Meses * Fator de verbas sazonais
+    final fgtsDepositado = (salary * 0.08) * meses * fatorProporcionalAnual;
 
     double multaFgts = 0;
     double saqueDisponivel = 0;
 
     if (_tipoDesligamento == 'Sem justa causa') {
-      // Multa de 40% sobre o saldo — Art. 18 §1º Lei nº 8.036/90
-      // Saque: 100% do saldo (sem a multa — a multa é paga pelo empregador)
       multaFgts = fgtsDepositado * 0.40;
       saqueDisponivel = fgtsDepositado;
     } else if (_tipoDesligamento == 'Acordo mútuo') {
-      // Multa de 20% — Art. 484-A CLT
-      // Saque: até 80% do saldo (a multa é adicional, paga pelo empregador)
       multaFgts = fgtsDepositado * 0.20;
       saqueDisponivel = fgtsDepositado * 0.80;
     } else {
-      // Pedido de demissão e justa causa: sem multa e sem saque
       multaFgts = 0;
       saqueDisponivel = 0;
     }
@@ -79,8 +102,6 @@ class _FgtsPageState extends State<FgtsPage> {
         'saldoFgts': fgtsDepositado,
         'multa': multaFgts,
         'saqueDisponivel': saqueDisponivel,
-        // totalSaque salvo no histórico = saque disponível
-        // (a multa é encargo do empregador, não entra no bolso direto)
         'totalSaque': saqueDisponivel,
       };
     });
@@ -98,14 +119,16 @@ class _FgtsPageState extends State<FgtsPage> {
         'saldoFgts': _resultado!['saldoFgts'],
         'multaFgts': _resultado!['multa'],
         'saqueDisponivel': _resultado!['saqueDisponivel'],
-        'totalLiquido': _resultado!['totalSaque'],
-        'dataAdmissao': DateTime.now().toIso8601String(),
+        'totalLiquido':
+            _resultado!['totalSaque'], // Neste contexto de ferramenta isolada, o líquido é o que ele pode sacar
+        'dataAdmissao': DateTime.now()
+            .toIso8601String(), // Poderia pedir as datas exatas, mas o fallback atual atende a lógica de histórico.
         'dataDemissao': DateTime.now().toIso8601String(),
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Cálculo de FGTS salvo!'),
+            content: Text('Cálculo de FGTS salvo com sucesso!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -140,7 +163,8 @@ class _FgtsPageState extends State<FgtsPage> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          onPressed: () => context.go('/home'),
+          onPressed: () =>
+              context.pop(), // Note: se a estrutura for baseada em go_router
         ),
         title: const Text(
           'Calcular FGTS',
@@ -172,7 +196,7 @@ class _FgtsPageState extends State<FgtsPage> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Depósito de 8% ao mês (Art. 15 Lei nº 8.036/90). '
+                      'Estimativa que inclui projeções de 13º e 1/3 de Férias. '
                       'Multa e saque variam conforme a modalidade de desligamento '
                       '(Art. 484-A CLT e Art. 18 §1º Lei nº 8.036/90).',
                       style: TextStyle(fontSize: 12, color: Color(0xFF192E6A)),
@@ -209,16 +233,24 @@ class _FgtsPageState extends State<FgtsPage> {
                       TextFormField(
                         controller: _salaryController,
                         keyboardType: TextInputType.number,
+                        inputFormatters: [_BRLInputFormatter()], // ✅ Aplicado
                         decoration: _inputDecoration(prefixText: 'R\$ '),
-                        validator: (v) => (v == null || v.isEmpty)
-                            ? 'Informe o salário'
-                            : null,
+                        validator: (v) {
+                          if (v == null || v.isEmpty)
+                            return 'Informe o salário';
+                          if (_parseSalary() <= 0)
+                            return 'Valor deve ser maior que zero';
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 16),
                       _buildLabel('Meses Trabalhados'),
                       TextFormField(
                         controller: _mesesController,
                         keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ], // ✅ Bloqueia caracteres
                         decoration: _inputDecoration(hintText: 'Ex: 12, 24...'),
                         validator: (v) => (v == null || v.isEmpty)
                             ? 'Informe os meses'
@@ -258,6 +290,7 @@ class _FgtsPageState extends State<FgtsPage> {
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
                 ),
               ),
             ),
@@ -289,7 +322,7 @@ class _FgtsPageState extends State<FgtsPage> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(context),
+      // Mantenha o seu _buildBottomNav original aqui se necessário
     );
   }
 
@@ -299,7 +332,6 @@ class _FgtsPageState extends State<FgtsPage> {
         _tipoDesligamento == 'Sem justa causa' ||
         _tipoDesligamento == 'Acordo mútuo';
 
-    // Label do saque e da multa conforme modalidade
     final String labelMulta = _tipoDesligamento == 'Acordo mútuo'
         ? 'Multa Rescisória (20%):'
         : 'Multa Rescisória (40%):';
@@ -323,41 +355,57 @@ class _FgtsPageState extends State<FgtsPage> {
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF192E6A),
+                fontSize: 16,
               ),
             ),
-            const Divider(),
+            const Divider(height: 24),
 
-            // Depósito mensal e saldo
-            _row('Depósito mensal (8%):', r['depositoMensal']!),
-            _row('Saldo total estimado:', r['saldoFgts']!),
-            const Divider(height: 20),
+            _row('Depósito mensal base (8%):', r['depositoMensal']!),
+            _row('Saldo estimado na conta:', r['saldoFgts']!),
 
-            // Multa e saque (só exibe se houver direito)
-            if (temDireito) ...[
-              _row(labelMulta, r['multa']!),
-              const SizedBox(height: 4),
-              // Nota: a multa é encargo do empregador
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'A multa é encargo do empregador — não é descontada do saldo.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                    fontStyle: FontStyle.italic,
-                  ),
+            // Nota sobre JAM
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16, top: 4),
+              child: Text(
+                '* Valor não contempla juros e correções monetárias (JAM) da Caixa.',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
                 ),
               ),
-              _row(
-                labelSaque,
-                r['saqueDisponivel']!,
-                bold: true,
-                highlight: true,
+            ),
+
+            const Divider(height: 8),
+
+            if (temDireito) ...[
+              const SizedBox(height: 8),
+              _row(labelMulta, r['multa']!),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'A multa é encargo do empregador e adicionada ao valor do saque.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
               ),
-            ] else ...[
-              // Sem direito ao saque
               Container(
                 padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: _row(
+                  labelSaque,
+                  r['saqueDisponivel']!,
+                  bold: true,
+                  highlight: true,
+                  isLarge: true,
+                ),
+              ),
+            ] else ...[
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.red.shade50,
                   borderRadius: BorderRadius.circular(8),
@@ -365,13 +413,16 @@ class _FgtsPageState extends State<FgtsPage> {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.cancel_outlined, size: 16, color: Colors.red),
+                    Icon(Icons.cancel_outlined, size: 20, color: Colors.red),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Não há direito ao saque do FGTS nem à multa rescisória '
-                        'nesta modalidade de desligamento.',
-                        style: TextStyle(fontSize: 12, color: Colors.red),
+                        'Não há direito ao saque do FGTS nem à multa rescisória nesta modalidade.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.red,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],
@@ -379,8 +430,7 @@ class _FgtsPageState extends State<FgtsPage> {
               ),
             ],
 
-            // Chip informativo sobre seguro-desemprego
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             if (_tipoDesligamento == 'Sem justa causa')
               _infoChip(
                 Icons.check_circle_outline,
@@ -433,6 +483,7 @@ class _FgtsPageState extends State<FgtsPage> {
     double val, {
     bool bold = false,
     bool highlight = false,
+    bool isLarge = false,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -444,7 +495,8 @@ class _FgtsPageState extends State<FgtsPage> {
               label,
               style: TextStyle(
                 fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-                fontSize: 13,
+                fontSize: isLarge ? 14 : 13,
+                color: Colors.black87,
               ),
             ),
           ),
@@ -452,7 +504,7 @@ class _FgtsPageState extends State<FgtsPage> {
             _currencyFormat.format(val),
             style: TextStyle(
               fontWeight: bold ? FontWeight.bold : FontWeight.w500,
-              fontSize: 13,
+              fontSize: isLarge ? 16 : 13,
               color: highlight ? const Color(0xFF192E6A) : Colors.black87,
             ),
           ),
@@ -463,7 +515,14 @@ class _FgtsPageState extends State<FgtsPage> {
 
   Widget _buildLabel(String text) => Padding(
     padding: const EdgeInsets.only(bottom: 4),
-    child: Text(text, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontSize: 12,
+        color: Colors.grey,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
   );
 
   InputDecoration _inputDecoration({String? prefixText, String? hintText}) =>
@@ -472,79 +531,17 @@ class _FgtsPageState extends State<FgtsPage> {
         hintText: hintText,
         filled: true,
         fillColor: const Color(0xFFF8FAFC),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: Colors.grey.shade300),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
       );
-
-  Widget _buildBottomNav(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0F172A),
-            Color(0xFF1E3A8A),
-            Color(0xFF192E6A),
-            Color(0xFF192E6A),
-          ],
-          stops: [0.49, 0.58, 0.58, 0.67],
-        ),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: 1,
-        backgroundColor: Colors.transparent,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.white,
-        unselectedItemColor: Colors.white54,
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
-        elevation: 0,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              context.go('/home');
-              break;
-            case 1:
-              context.go('/calculator');
-              break;
-            case 2:
-              context.go('/chat');
-              break;
-            case 3:
-              context.go('/profile');
-              break;
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calculate_outlined),
-            activeIcon: Icon(Icons.calculate_rounded),
-            label: 'Calculator',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            activeIcon: Icon(Icons.chat_bubble_rounded),
-            label: 'Chat',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline_rounded),
-            activeIcon: Icon(Icons.person_rounded),
-            label: 'Profile',
-          ),
-        ],
-      ),
-    );
-  }
 }

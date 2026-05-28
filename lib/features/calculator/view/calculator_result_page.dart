@@ -5,64 +5,84 @@ import 'package:intl/intl.dart';
 import '../../../shared/utils/pdf_service.dart';
 import '../../history/repository/history_repository.dart';
 
-class CalculatorResultPage extends ConsumerWidget {
+class CalculatorResultPage extends ConsumerStatefulWidget {
   final Map<String, dynamic> data;
-  final String? docId; // ID do documento para exclusão
+  final String? docId;
 
-  // ✅ CORRETO: O construtor deve ter o mesmo nome da classe
   const CalculatorResultPage({super.key, required this.data, this.docId});
 
-  double _d(String key) => (data[key] as num?)?.toDouble() ?? 0.0;
+  @override
+  ConsumerState<CalculatorResultPage> createState() =>
+      _CalculatorResultPageState();
+}
 
-  String _formatCurrency(double value) {
-    return NumberFormat.currency(
-      locale: 'pt_BR',
-      symbol: 'R\$',
-      decimalDigits: 2,
-    ).format(value);
+class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
+  int _selectedTab = 0;
+
+  double _d(String key) => (widget.data[key] as num?)?.toDouble() ?? 0.0;
+
+  String _formatCurrency(double value) => NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+    decimalDigits: 2,
+  ).format(value);
+
+  String get _modalidade => widget.data['modalidade'] as String? ?? 'Rescisão';
+  bool get _isRescisao => _modalidade == 'Rescisão';
+  bool get _isFerias => _modalidade == 'Férias';
+  bool get _isFgts => _modalidade == 'FGTS';
+  bool get _isInss => _modalidade == 'INSS';
+
+  String get _labelMulta => widget.data['tipoDesligamento'] == 'Acordo mútuo'
+      ? 'Multa 20% s/ FGTS:'
+      : 'Multa 40% s/ FGTS:';
+
+  String? get _labelSaque {
+    final t = widget.data['tipoDesligamento'] as String? ?? '';
+    if (t == 'Sem justa causa') return 'Saque FGTS disponível (100%):';
+    if (t == 'Acordo mútuo') return 'Saque FGTS disponível (80%):';
+    return null;
   }
 
+  double get _feriasPropTotal =>
+      _d('feriasProporcional') +
+      (_d('tercoFeriasProporcional') > 0
+          ? _d('tercoFeriasProporcional')
+          : _d('tercoFerias'));
+
+  double get _feriasVencidasTotal =>
+      _d('feriasVencidas') + _d('tercoFeriasVencidas');
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final modalidade = data['modalidade'] as String? ?? 'Rescisão';
+  Widget build(BuildContext context) {
+    final modalidade = _modalidade;
     final tipoDesligamento =
-        data['tipoDesligamento'] as String? ?? 'Sem justa causa';
-    final createdAt = data['createdAt'];
+        widget.data['tipoDesligamento'] as String? ?? 'Sem justa causa';
+    final mesesTrabalhados = widget.data['mesesTrabalhados'] as int? ?? 0;
+    final anosCompletos = widget.data['anosCompletos'] as int? ?? 0;
+    final mesesRestantes = mesesTrabalhados % 12;
+    final diasAviso = widget.data['diasAviso'] as int? ?? 0;
+
     String dataFormatada = '—';
-    if (createdAt != null) {
-      try {
+    try {
+      final createdAt = widget.data['createdAt'];
+      if (createdAt != null) {
         final dt = (createdAt as dynamic).toDate() as DateTime;
         dataFormatada = DateFormat('dd/MM/yyyy HH:mm').format(dt);
-      } catch (_) {}
-    }
-
-    String admissao = '—';
-    String demissao = '—';
-    try {
-      admissao = DateFormat(
-        'dd/MM/yyyy',
-      ).format(DateTime.parse(data['dataAdmissao'] as String));
-      demissao = DateFormat(
-        'dd/MM/yyyy',
-      ).format(DateTime.parse(data['dataDemissao'] as String));
+      }
     } catch (_) {}
 
-    final String labelMulta = tipoDesligamento == 'Acordo mútuo'
-        ? 'Multa de 20% s/ FGTS (acordo mútuo):'
-        : 'Multa de 40% s/ FGTS:';
-
-    final String labelSaque;
-    final String valorSaque;
-    if (tipoDesligamento == 'Sem justa causa') {
-      labelSaque = 'Saque do FGTS disponível (100%):';
-      valorSaque = _formatCurrency(_d('fgtsSaqueDisponivel'));
-    } else if (tipoDesligamento == 'Acordo mútuo') {
-      labelSaque = 'Saque do FGTS disponível (80%):';
-      valorSaque = _formatCurrency(_d('fgtsSaqueDisponivel'));
-    } else {
-      labelSaque = 'Saque do FGTS:';
-      valorSaque = 'Não disponível';
-    }
+    String admissao = '—', demissao = '—';
+    try {
+      if (widget.data['dataAdmissao'] != null)
+        admissao = DateFormat(
+          'dd/MM/yyyy',
+        ).format(DateTime.parse(widget.data['dataAdmissao'] as String));
+      if (widget.data['dataDemissao'] != null)
+        demissao = DateFormat(
+          'dd/MM/yyyy',
+        ).format(DateTime.parse(widget.data['dataDemissao'] as String));
+    } catch (_) {}
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -100,27 +120,28 @@ class CalculatorResultPage extends ConsumerWidget {
                           ),
                           onPressed: () => context.pop(),
                         ),
-                        Text(
-                          'Extrato — $modalidade',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Text(
+                            'Extrato — $modalidade',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-                // ── Menu de abas ──────────────────────────────────────
                 _buildMenuTabs(),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
-                        // ── Card principal ────────────────────────────
                         Container(
+                          width: double.infinity,
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -129,188 +150,593 @@ class CalculatorResultPage extends ConsumerWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _sectionTitle('Resumo rápido'),
-                              const SizedBox(height: 12),
-                              _infoRow('Modalidade:', modalidade),
-                              _infoRow(
-                                'Tipo de desligamento:',
-                                tipoDesligamento,
-                              ),
-                              _infoRow('Data do cálculo:', dataFormatada),
-                              _infoRow('Data de Admissão:', admissao),
-                              _infoRow('Data de Demissão:', demissao),
-                              _infoRow(
-                                'Meses Trabalhados:',
-                                '${data['mesesTrabalhados'] ?? '—'} meses',
-                              ),
-                              const Divider(height: 28),
-                              _sectionTitle('Valores chave'),
-                              const SizedBox(height: 12),
-                              _valueRow(
-                                'Valor Bruto da Rescisão:',
-                                _d('totalBruto'),
-                                bold: true,
-                                highlight: true,
-                              ),
-                              _valueRow(
-                                'Total de Descontos:',
-                                _d('totalDescontos'),
-                                isNegative: true,
-                              ),
-                              _valueRow(
-                                'Valor Líquido a Receber:',
-                                _d('totalLiquido'),
-                                bold: true,
-                                highlight: true,
-                              ),
-                              const Divider(height: 28),
-                              _sectionTitle(
-                                'Verbas rescisórias — detalhamento',
-                              ),
-                              const SizedBox(height: 12),
-                              _valueRow(
-                                'Saldo de Salário:',
-                                _d('saldoSalario'),
-                              ),
-                              if (_d('avisoPrevio') > 0)
-                                _valueRow(
-                                  'Aviso Prévio Indenizado:',
-                                  _d('avisoPrevio'),
-                                ),
-                              _valueRow(
-                                '13º Salário Proporcional:',
-                                _d('decimoTerceiro'),
-                              ),
-                              _valueRow(
-                                'Férias Proporcionais + 1/3:',
-                                _d('feriasProporcional') + _d('tercoFerias'),
-                              ),
-                              if (_d('feriasVencidas') > 0)
-                                _valueRow(
-                                  'Férias Vencidas:',
-                                  _d('feriasVencidas'),
-                                ),
-                              if (_d('insalubridade') > 0)
-                                _valueRow(
-                                  'Adicional de Insalubridade:',
-                                  _d('insalubridade'),
-                                ),
-                              if (_d('horasExtras') > 0)
-                                _valueRow('Horas Extras:', _d('horasExtras')),
-                              if (_d('multaFgts') > 0)
-                                _valueRow(labelMulta, _d('multaFgts')),
-                              const Divider(height: 28),
-                              _sectionTitle('Descontos detalhados'),
-                              const SizedBox(height: 12),
-                              _valueRow('INSS:', _d('inss'), isNegative: true),
-                              if (_d('irrf') > 0)
-                                _valueRow(
-                                  'IRRF:',
-                                  _d('irrf'),
-                                  isNegative: true,
-                                ),
-                              const Divider(height: 28),
-                              _sectionTitle('FGTS'),
-                              const SizedBox(height: 12),
-                              _valueRow(
-                                'Saldo estimado na conta:',
-                                _d('fgtsDeposito'),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        labelSaque,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.black54,
-                                        ),
-                                      ),
+                              // ════════════════════════════════════════
+                              // TAB 0 — RESUMO GERAL
+                              // ════════════════════════════════════════
+                              if (_selectedTab == 0) ...[
+                                _sectionTitle('Resumo'),
+                                const SizedBox(height: 12),
+                                _infoRow('Modalidade:', modalidade),
+                                if (_isRescisao)
+                                  _infoRow(
+                                    'Tipo de desligamento:',
+                                    tipoDesligamento,
+                                  ),
+                                _infoRow('Data do cálculo:', dataFormatada),
+                                if (admissao != '—')
+                                  _infoRow('Data de Admissão:', admissao),
+                                if (demissao != '—')
+                                  _infoRow('Data de Demissão:', demissao),
+                                if (_isRescisao && mesesTrabalhados > 0)
+                                  _infoRow(
+                                    'Tempo trabalhado:',
+                                    '$anosCompletos anos e $mesesRestantes meses',
+                                  ),
+                                if (_isRescisao && diasAviso > 0)
+                                  _infoRow('Aviso Prévio:', '$diasAviso dias'),
+                                if (_isFgts && mesesTrabalhados > 0)
+                                  _infoRow(
+                                    'Meses trabalhados:',
+                                    '$mesesTrabalhados meses',
+                                  ),
+                                if (_isFerias && widget.data['dias'] != null)
+                                  _infoRow(
+                                    'Dias de férias:',
+                                    '${widget.data['dias']} dias',
+                                  ),
+
+                                const Divider(height: 28),
+                                _sectionTitle('Resultado Final'),
+                                const SizedBox(height: 12),
+
+                                if (_isRescisao) ...[
+                                  _valueRow(
+                                    'Valor Bruto da Rescisão:',
+                                    _d('totalBruto'),
+                                    bold: true,
+                                  ),
+                                  _valueRow(
+                                    'Total de Descontos:',
+                                    _d('totalDescontos'),
+                                    isNegative: true,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _valueRow(
+                                    'Valor Líquido a Receber:',
+                                    _d('totalLiquido'),
+                                    bold: true,
+                                    highlight: true,
+                                    isLarge: true,
+                                  ),
+                                ] else if (_isFerias) ...[
+                                  _valueRow(
+                                    'Valor das Férias:',
+                                    _d('valorFerias'),
+                                  ),
+                                  _valueRow(
+                                    'Adicional 1/3:',
+                                    _d('tercoFerias'),
+                                  ),
+                                  const Divider(),
+                                  _valueRow(
+                                    'Total Bruto:',
+                                    _d('bruto'),
+                                    bold: true,
+                                  ),
+                                  _valueRow(
+                                    'Desconto INSS:',
+                                    _d('inss'),
+                                    isNegative: true,
+                                  ),
+                                  _valueRow(
+                                    'Desconto IRRF:',
+                                    _d('irrf'),
+                                    isNegative: true,
+                                  ),
+                                  const Divider(),
+                                  _valueRow(
+                                    'Líquido a Receber:',
+                                    _d('liquido'),
+                                    bold: true,
+                                    highlight: true,
+                                    isLarge: true,
+                                  ),
+                                ] else if (_isFgts) ...[
+                                  _valueRow('Salário Base:', _d('salario')),
+                                  _valueRow(
+                                    'Depósito mensal (8%):',
+                                    _d('depositoMensal'),
+                                  ),
+                                  _valueRow(
+                                    'Saldo estimado na conta:',
+                                    _d('saldoFgts'),
+                                  ),
+                                  if (_d('multa') > 0)
+                                    _valueRow(_labelMulta, _d('multa')),
+                                  if (_d('saqueDisponivel') > 0)
+                                    _valueRow(
+                                      'Saque FGTS disponível:',
+                                      _d('saqueDisponivel'),
+                                      bold: true,
+                                      highlight: true,
+                                      isLarge: true,
                                     ),
-                                    Text(
-                                      valorSaque,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: _d('fgtsSaqueDisponivel') > 0
-                                            ? const Color(0xFF192E6A)
-                                            : Colors.red,
-                                      ),
+                                ] else if (_isInss) ...[
+                                  _valueRow(
+                                    'Salário Bruto:',
+                                    _d('salarioBruto'),
+                                  ),
+                                  _valueRow(
+                                    'Desconto INSS:',
+                                    _d('descontoINSS'),
+                                    isNegative: true,
+                                  ),
+                                  _valueRow(
+                                    'Desconto IRRF:',
+                                    _d('descontoIRRF'),
+                                    isNegative: true,
+                                  ),
+                                  const Divider(),
+                                  _valueRow(
+                                    'Salário Líquido:',
+                                    _d('salarioLiquido'),
+                                    bold: true,
+                                    highlight: true,
+                                    isLarge: true,
+                                  ),
+                                ],
+
+                                const Divider(height: 28),
+                                _sectionTitle('Informações Adicionais'),
+                                const SizedBox(height: 12),
+
+                                if (_isRescisao) ...[
+                                  if (tipoDesligamento == 'Sem justa causa')
+                                    _buildInfoChip(
+                                      Icons.check_circle_outline,
+                                      'Direito ao Seguro-Desemprego (verifique carência)',
+                                      Colors.green,
+                                    ),
+                                  if (tipoDesligamento == 'Acordo mútuo')
+                                    _buildInfoChip(
+                                      Icons.info_outline,
+                                      'Acordo mútuo não dá direito ao Seguro-Desemprego',
+                                      Colors.orange,
+                                    ),
+                                  if (tipoDesligamento ==
+                                          'Pedido de demissão' ||
+                                      tipoDesligamento == 'Com justa causa')
+                                    _buildInfoChip(
+                                      Icons.cancel_outlined,
+                                      'Sem direito ao Seguro-Desemprego nem saque do FGTS',
+                                      Colors.red,
+                                    ),
+                                ],
+                                if (_isFgts)
+                                  _buildInfoChip(
+                                    Icons.info_outline,
+                                    'Valor estimado — não contempla juros e correções (JAM) da Caixa',
+                                    Colors.blue,
+                                  ),
+
+                                _infoRow(
+                                  'Prazo para pagamento:',
+                                  '10 dias úteis (Art. 477 CLT)',
+                                ),
+                                _infoRow('Base Legal:', 'Legislação de 2026'),
+                              ],
+
+                              // ════════════════════════════════════════
+                              // TAB 1 — DETALHAMENTO
+                              // ════════════════════════════════════════
+                              if (_selectedTab == 1) ...[
+                                if (_isRescisao) ...[
+                                  _sectionTitle(
+                                    'Verbas Rescisórias (Créditos)',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  if (_d('saldoSalario') > 0)
+                                    _valueRow(
+                                      'Saldo de Salário:',
+                                      _d('saldoSalario'),
+                                    ),
+                                  if (_d('avisoPrevio') > 0)
+                                    _valueRow(
+                                      'Aviso Prévio Indenizado ($diasAviso dias):',
+                                      _d('avisoPrevio'),
+                                    ),
+                                  if (_d('decimoTerceiroProporcional') > 0)
+                                    _valueRow(
+                                      '13º Salário Proporcional:',
+                                      _d('decimoTerceiroProporcional'),
+                                    ),
+                                  if (_feriasPropTotal > 0)
+                                    _valueRow(
+                                      'Férias Proporcionais + 1/3:',
+                                      _feriasPropTotal,
+                                    ),
+                                  if (_feriasVencidasTotal > 0)
+                                    _valueRow(
+                                      'Férias Vencidas + 1/3:',
+                                      _feriasVencidasTotal,
+                                    ),
+                                  if (_d('insalubridadeProporcional') > 0)
+                                    _valueRow(
+                                      'Adicional de Insalubridade:',
+                                      _d('insalubridadeProporcional'),
+                                    ),
+                                  if (_d('horasExtrasValor') > 0)
+                                    _valueRow(
+                                      'Horas Extras:',
+                                      _d('horasExtrasValor'),
+                                    ),
+                                  if (_d('multaFgts') > 0)
+                                    _valueRow(_labelMulta, _d('multaFgts')),
+                                  const Divider(height: 20),
+                                  _valueRow(
+                                    'TOTAL BRUTO:',
+                                    _d('totalBruto'),
+                                    bold: true,
+                                    highlight: true,
+                                  ),
+                                  const Divider(height: 20),
+                                  _sectionTitle('Descontos (Débitos)'),
+                                  const SizedBox(height: 12),
+                                  _valueRow(
+                                    'INSS:',
+                                    _d('inss'),
+                                    isNegative: true,
+                                  ),
+                                  if (_d('irrf') > 0)
+                                    _valueRow(
+                                      'IRRF:',
+                                      _d('irrf'),
+                                      isNegative: true,
+                                    ),
+                                  const Divider(height: 20),
+                                  _valueRow(
+                                    'TOTAL DESCONTOS:',
+                                    _d('totalDescontos'),
+                                    bold: true,
+                                    isNegative: true,
+                                  ),
+                                  const Divider(height: 20),
+                                  _sectionTitle('FGTS'),
+                                  const SizedBox(height: 12),
+                                  _valueRow(
+                                    'Depósitos estimados (8% mensal):',
+                                    _d('fgtsDepositoEstimado'),
+                                  ),
+                                  if (_d('multaFgts') > 0)
+                                    _valueRow(_labelMulta, _d('multaFgts')),
+                                  if (_labelSaque != null)
+                                    _valueRow(
+                                      _labelSaque!,
+                                      _d('fgtsSaqueDisponivel'),
+                                      highlight: true,
+                                    ),
+                                  if (_labelSaque == null)
+                                    _buildInfoChip(
+                                      Icons.cancel_outlined,
+                                      'Saque do FGTS não disponível nesta modalidade',
+                                      Colors.red,
+                                    ),
+                                ] else if (_isFerias) ...[
+                                  _sectionTitle('Detalhamento das Férias'),
+                                  const SizedBox(height: 12),
+                                  _valueRow('Salário Base:', _d('salario')),
+                                  _infoRow(
+                                    'Dias de férias:',
+                                    '${widget.data['dias'] ?? 30} dias',
+                                  ),
+                                  _valueRow(
+                                    'Valor das Férias:',
+                                    _d('valorFerias'),
+                                  ),
+                                  _valueRow(
+                                    'Adicional Constitucional 1/3:',
+                                    _d('tercoFerias'),
+                                  ),
+                                  const Divider(),
+                                  _valueRow(
+                                    'Subtotal (Bruto):',
+                                    _d('bruto'),
+                                    bold: true,
+                                  ),
+                                  const Divider(height: 20),
+                                  _sectionTitle('Descontos'),
+                                  const SizedBox(height: 8),
+                                  _valueRow(
+                                    'INSS:',
+                                    _d('inss'),
+                                    isNegative: true,
+                                  ),
+                                  _valueRow(
+                                    'IRRF:',
+                                    _d('irrf'),
+                                    isNegative: true,
+                                  ),
+                                  const Divider(),
+                                  _valueRow(
+                                    'Líquido a Receber:',
+                                    _d('liquido'),
+                                    bold: true,
+                                    highlight: true,
+                                  ),
+                                ] else if (_isFgts) ...[
+                                  _sectionTitle('Detalhamento do FGTS'),
+                                  const SizedBox(height: 12),
+                                  _valueRow(
+                                    'Salário Base Mensal:',
+                                    _d('salario'),
+                                  ),
+                                  _infoRow(
+                                    'Meses trabalhados:',
+                                    '$mesesTrabalhados meses',
+                                  ),
+                                  _valueRow(
+                                    'Depósito Mensal (8%):',
+                                    _d('depositoMensal'),
+                                  ),
+                                  _valueRow(
+                                    'Total Depositado (8% × meses):',
+                                    _d('saldoFgts'),
+                                  ),
+                                  if (_d('multa') > 0) ...[
+                                    const Divider(),
+                                    _valueRow('Multa Rescisória:', _d('multa')),
+                                    _infoRow(
+                                      'Percentual:',
+                                      tipoDesligamento == 'Acordo mútuo'
+                                          ? '20%'
+                                          : '40%',
                                     ),
                                   ],
+                                  if (_d('saqueDisponivel') > 0) ...[
+                                    const Divider(),
+                                    _valueRow(
+                                      'Valor disponível para saque:',
+                                      _d('saqueDisponivel'),
+                                      bold: true,
+                                      highlight: true,
+                                    ),
+                                  ],
+                                  _buildInfoChip(
+                                    Icons.info_outline,
+                                    'Valor estimado. O saldo real pode variar por juros e correções (JAM).',
+                                    Colors.blue,
+                                  ),
+                                ] else if (_isInss) ...[
+                                  _sectionTitle('Detalhamento dos Descontos'),
+                                  const SizedBox(height: 12),
+                                  _valueRow(
+                                    'Salário Bruto:',
+                                    _d('salarioBruto'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _sectionTitle(
+                                    'Tabela INSS Progressiva 2026:',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildInssTable(_d('salarioBruto')),
+                                  const Divider(),
+                                  _valueRow(
+                                    'Desconto Total INSS:',
+                                    _d('descontoINSS'),
+                                    bold: true,
+                                    isNegative: true,
+                                  ),
+                                  if (_d('descontoIRRF') > 0) ...[
+                                    const SizedBox(height: 8),
+                                    _valueRow(
+                                      'Desconto IRRF:',
+                                      _d('descontoIRRF'),
+                                      isNegative: true,
+                                    ),
+                                    _infoRow(
+                                      'Dependentes:',
+                                      '${widget.data['dependentes'] ?? 0}',
+                                    ),
+                                  ],
+                                  if (_d('descontoIRRF') == 0)
+                                    _buildInfoChip(
+                                      Icons.check_circle_outline,
+                                      'Isento de IRRF — base abaixo de R\$ 5.000,00',
+                                      Colors.green,
+                                    ),
+                                ],
+                              ],
+
+                              // ════════════════════════════════════════
+                              // TAB 2 — TABELAS 2026
+                              // ════════════════════════════════════════
+                              if (_selectedTab == 2) ...[
+                                _sectionTitle('Tabelas Vigentes 2026'),
+                                const SizedBox(height: 16),
+                                _buildTableCard(
+                                  title: 'Tabela INSS 2026 (Progressiva)',
+                                  subtitle:
+                                      'Portaria Interministerial MPS/MF nº 02/2026',
+                                  rows: const [
+                                    ['Até R\$ 1.621,00', '7,5%'],
+                                    ['R\$ 1.621,01 – R\$ 2.902,84', '9,0%'],
+                                    ['R\$ 2.902,85 – R\$ 4.354,27', '12,0%'],
+                                    ['R\$ 4.354,28 – R\$ 8.475,55', '14,0%'],
+                                    [
+                                      'Acima de R\$ 8.475,55',
+                                      'Teto: R\$ 951,00',
+                                    ],
+                                  ],
                                 ),
-                              ),
-                              if (tipoDesligamento == 'Sem justa causa')
-                                _buildInfoChip(
-                                  Icons.check_circle_outline,
-                                  'Direito ao Seguro-Desemprego (verifique carência)',
-                                  Colors.green,
+                                const SizedBox(height: 12),
+                                _buildTableCard(
+                                  title: 'Tabela IRRF 2026',
+                                  subtitle:
+                                      'Lei nº 14.848/2024 — Isenção até R\$ 5.000,00',
+                                  rows: const [
+                                    ['Até R\$ 5.000,00', 'Isento'],
+                                    ['R\$ 5.000,01 – R\$ 6.000,00', '7,5%'],
+                                    ['R\$ 6.000,01 – R\$ 7.500,00', '15,0%'],
+                                    ['R\$ 7.500,01 – R\$ 9.000,00', '22,5%'],
+                                    ['Acima de R\$ 9.000,00', '27,5%'],
+                                  ],
                                 ),
-                              if (tipoDesligamento == 'Acordo mútuo')
-                                _buildInfoChip(
-                                  Icons.info_outline,
-                                  'Acordo mútuo não dá direito ao Seguro-Desemprego',
-                                  Colors.orange,
+                                const SizedBox(height: 12),
+                                _buildTableCard(
+                                  title: 'Aviso Prévio Proporcional',
+                                  subtitle: 'Lei nº 12.506/2011',
+                                  rows: const [
+                                    ['Base', '30 dias'],
+                                    ['Acréscimo por ano trabalhado', '+3 dias'],
+                                    ['Limite máximo', '90 dias'],
+                                  ],
                                 ),
-                              if (tipoDesligamento == 'Pedido de demissão' ||
-                                  tipoDesligamento == 'Com justa causa')
-                                _buildInfoChip(
-                                  Icons.cancel_outlined,
-                                  'Não há direito ao Seguro-Desemprego nem saque do FGTS',
-                                  Colors.red,
+                                const SizedBox(height: 12),
+                                _buildTableCard(
+                                  title: 'Multa do FGTS por Modalidade',
+                                  subtitle:
+                                      'Art. 18 §1º Lei nº 8.036/90 e Art. 484-A CLT',
+                                  rows: const [
+                                    ['Sem justa causa', '40% + saque 100%'],
+                                    ['Acordo mútuo', '20% + saque 80%'],
+                                    [
+                                      'Pedido de demissão',
+                                      'Sem multa / Sem saque',
+                                    ],
+                                    [
+                                      'Com justa causa',
+                                      'Sem multa / Sem saque',
+                                    ],
+                                  ],
                                 ),
-                              const Divider(height: 28),
-                              _sectionTitle('Informações adicionais'),
-                              const SizedBox(height: 12),
-                              _infoRow(
-                                'Prazo para pagamento:',
-                                '10 dias úteis (Art. 477 CLT)',
-                              ),
-                              _infoRow(
-                                'Referência legislativa:',
-                                'Lei nº 14.848/2024 · Port. MPS/MF nº 02/2026',
-                              ),
+                              ],
+
+                              // ════════════════════════════════════════
+                              // TAB 3 — FUNDAMENTAÇÃO LEGAL
+                              // ════════════════════════════════════════
+                              if (_selectedTab == 3) ...[
+                                _sectionTitle('Fundamentação Legal'),
+                                const SizedBox(height: 16),
+                                _buildLegalCard(
+                                  title: 'Rescisão do Contrato',
+                                  items: const [
+                                    '• Art. 477 CLT — Prazo de 10 dias úteis para pagamento',
+                                    '• Art. 487 CLT — Aviso prévio',
+                                    '• Lei nº 12.506/2011 — Aviso prévio proporcional',
+                                    '• Art. 484-A CLT — Rescisão por acordo mútuo',
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                _buildLegalCard(
+                                  title: 'Direitos Trabalhistas',
+                                  items: const [
+                                    '• Art. 7º, XVII CF/88 — Adicional de 1/3 sobre férias',
+                                    '• Lei nº 4.090/62 — 13º salário',
+                                    '• Art. 192 CLT — Adicional de insalubridade',
+                                    '• Art. 59 CLT — Horas extras (mínimo 50%)',
+                                    '• Portaria nº 3.665/2023 — Horas extras em feriados (100%)',
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                _buildLegalCard(
+                                  title: 'FGTS',
+                                  items: const [
+                                    '• Art. 15 e 18 da Lei nº 8.036/90 — FGTS e multa',
+                                    '• Art. 484-A CLT — Multa 20% e saque 80% no acordo mútuo',
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                _buildLegalCard(
+                                  title: 'Tributação 2026',
+                                  items: const [
+                                    '• Portaria MPS/MF nº 02/2026 — Tabela INSS progressiva',
+                                    '• Lei nº 14.848/2024 — IRRF com isenção até R\$ 5.000,00',
+                                    '• Dedução por dependente: R\$ 189,59',
+                                    '• Salário mínimo: R\$ 1.621,00 (Decreto nº 12.797/2025)',
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                _buildLegalCard(
+                                  title: 'Prazos Importantes',
+                                  items: const [
+                                    '• Pagamento da rescisão: até 10 dias úteis (Art. 477 CLT)',
+                                    '• Seguro-Desemprego: solicitar entre 7 e 120 dias após a demissão',
+                                    '• Saque do FGTS: até 5 dias úteis após a movimentação',
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
                         const SizedBox(height: 16),
-                        // ── Botões de ação (COMPLETOS) ─────────────────
+
+                        // ── Botões de Ação ────────────────────────────
                         _buildActionButton(
                           label: 'EXPORTAR PDF',
                           icon: Icons.picture_as_pdf_outlined,
-                          onTap: () => PdfService.generateAndShare(data),
+                          onTap: () => PdfService.generateAndShare(widget.data),
                         ),
                         const SizedBox(height: 10),
                         _buildActionButton(
                           label: 'COMPARTILHAR',
                           icon: Icons.share_outlined,
-                          onTap: () => PdfService.shareAsText(data),
+                          onTap: () => PdfService.shareAsText(widget.data),
                         ),
+                        const SizedBox(height: 10),
+                        if (widget.docId == null)
+                          _buildActionButton(
+                            label: 'SALVAR NO HISTÓRICO',
+                            icon: Icons.save_outlined,
+                            onTap: () async {
+                              try {
+                                await historyRepository.saveCalculation({
+                                  ...widget.data,
+                                  'modalidade': modalidade,
+                                  'tipoDesligamento': tipoDesligamento,
+                                });
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Cálculo salvo com sucesso!',
+                                      ),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Erro ao salvar: ${e.toString()}',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                          ),
                         const SizedBox(height: 10),
                         _buildActionButton(
                           label: 'REFAZER CÁLCULO',
                           icon: Icons.refresh,
-                          onTap: () {
-                            // Navegar para a calculadora com os dados pré-preenchidos
-                            context.go('/calculator', extra: data);
-                          },
+                          onTap: () => context.go('/calculator'),
                         ),
-                        const SizedBox(height: 10),
-                        if (docId != null)
+                        if (widget.docId != null) ...[
+                          const SizedBox(height: 10),
                           _buildActionButton(
                             label: 'EXCLUIR CÁLCULO',
                             icon: Icons.delete_outline,
+                            isDestructive: true,
                             onTap: () async {
                               final confirmed = await showDialog<bool>(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
                                   title: const Text('Excluir cálculo'),
                                   content: const Text(
-                                    'Tem certeza que deseja excluir este cálculo permanentemente?',
+                                    'Tem certeza? Esta ação não pode ser desfeita.',
                                   ),
                                   actions: [
                                     TextButton(
@@ -328,22 +754,19 @@ class CalculatorResultPage extends ConsumerWidget {
                                   ],
                                 ),
                               );
-
-                              if (confirmed == true && docId != null) {
+                              if (confirmed == true) {
                                 try {
                                   await historyRepository.deleteCalculation(
-                                    docId!,
+                                    widget.docId!,
                                   );
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text(
-                                          'Cálculo excluído com sucesso!',
-                                        ),
+                                        content: Text('Cálculo excluído.'),
                                         backgroundColor: Colors.green,
                                       ),
                                     );
-                                    context.pop(); // Volta para a lista
+                                    context.pop();
                                   }
                                 } catch (e) {
                                   if (context.mounted) {
@@ -359,8 +782,8 @@ class CalculatorResultPage extends ConsumerWidget {
                                 }
                               }
                             },
-                            isDestructive: true,
                           ),
+                        ],
                         const SizedBox(height: 24),
                       ],
                     ),
@@ -375,47 +798,212 @@ class CalculatorResultPage extends ConsumerWidget {
     );
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // MENU DE ABAS
+  // ══════════════════════════════════════════════════════════════════════════
+
   Widget _buildMenuTabs() {
+    final labels = ['RESUMO', 'DETALHAMENTO', 'TABELAS 2026', 'BASE LEGAL'];
+    final totalTabs = labels.length;
+
+    // ✅ Garante que _selectedTab seja válido
+    if (_selectedTab >= totalTabs) {
+      _selectedTab = 0;
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
-          children: [
-            _buildTab('RESUMO RÁPIDO', true),
-            _buildTab('VALORES CHAVE', false),
-            _buildTab('DESCONTOS', false),
-            _buildTab('FGTS', false),
-            _buildTab('INFORMAÇÕES', false),
-          ],
+          children: List.generate(
+            totalTabs,
+            (i) => GestureDetector(
+              onTap: () => setState(() => _selectedTab = i),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: _selectedTab == i ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white38),
+                ),
+                child: Text(
+                  labels[i],
+                  style: TextStyle(
+                    color: _selectedTab == i
+                        ? const Color(0xFF192E6A)
+                        : Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTab(String label, bool selected) {
+  // ══════════════════════════════════════════════════════════════════════════
+  // WIDGETS AUXILIARES
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildInssTable(double salary) {
+    final faixas = [
+      ['Até R\$ 1.621,00', '7,5%', salary <= 1621.00],
+      [
+        'R\$ 1.621,01 a R\$ 2.902,84',
+        '9,0%',
+        salary > 1621.00 && salary <= 2902.84,
+      ],
+      [
+        'R\$ 2.902,85 a R\$ 4.354,27',
+        '12,0%',
+        salary > 2902.84 && salary <= 4354.27,
+      ],
+      [
+        'R\$ 4.354,28 a R\$ 8.475,55',
+        '14,0%',
+        salary > 4354.27 && salary <= 8475.55,
+      ],
+      ['Acima de R\$ 8.475,55', 'Teto R\$ 951,00', salary > 8475.55],
+    ];
+
+    return Column(
+      children: faixas.map((f) {
+        final ativa = f[2] as bool;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: ativa
+                ? const Color(0xFF192E6A).withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  f[0] as String,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: ativa ? const Color(0xFF192E6A) : Colors.black54,
+                  ),
+                ),
+              ),
+              Text(
+                f[1] as String,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: ativa ? const Color(0xFF192E6A) : Colors.black54,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildTableCard({
+    required String title,
+    required String subtitle,
+    required List<List<String>> rows,
+  }) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: selected ? Colors.white : Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white38),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: selected ? const Color(0xFF192E6A) : Colors.white70,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: Color(0xFF192E6A),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+          const Divider(height: 16),
+          ...rows.map(
+            (row) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(row[0], style: const TextStyle(fontSize: 12)),
+                  ),
+                  Text(
+                    row[1],
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegalCard({required String title, required List<String> items}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: Color(0xFF192E6A),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                item,
+                style: const TextStyle(fontSize: 12, height: 1.4),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildInfoChip(IconData icon, String text, Color color) {
     return Container(
-      margin: const EdgeInsets.only(top: 8),
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
@@ -467,12 +1055,15 @@ class CalculatorResultPage extends ConsumerWidget {
     );
   }
 
-  Widget _sectionTitle(String title) => Text(
-    title,
-    style: const TextStyle(
-      fontSize: 14,
-      fontWeight: FontWeight.bold,
-      color: Color(0xFF192E6A),
+  Widget _sectionTitle(String title) => Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Text(
+      title,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF192E6A),
+      ),
     ),
   );
 
@@ -503,6 +1094,7 @@ class CalculatorResultPage extends ConsumerWidget {
     bool bold = false,
     bool highlight = false,
     bool isNegative = false,
+    bool isLarge = false,
   }) {
     final color = highlight
         ? const Color(0xFF192E6A)
@@ -518,8 +1110,8 @@ class CalculatorResultPage extends ConsumerWidget {
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 13,
-                color: Colors.black54,
+                fontSize: isLarge ? 15 : 13,
+                color: highlight ? const Color(0xFF192E6A) : Colors.black54,
                 fontWeight: bold ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -527,7 +1119,7 @@ class CalculatorResultPage extends ConsumerWidget {
           Text(
             '${isNegative && value > 0 ? '- ' : ''}${_formatCurrency(value)}',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: isLarge ? 18 : 13,
               color: color,
               fontWeight: bold ? FontWeight.bold : FontWeight.w500,
             ),
@@ -557,7 +1149,7 @@ class CalculatorResultPage extends ConsumerWidget {
         ),
       ),
       child: BottomNavigationBar(
-        currentIndex: 3, // ou o índice apropriado
+        currentIndex: 1,
         backgroundColor: Colors.transparent,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.white,

@@ -100,7 +100,7 @@ class AboutPage extends StatelessWidget {
               content:
                   'O SIATRAB é um Trabalho de Conclusão de Curso (TCC) '
                   'desenvolvido como requisito parcial para obtenção do título '
-                  'de graduação em Análise e Desenvolvimento de Sistemas.',
+                  'de graduação em Tecnologia em Sistemas para Internet.',
             ),
 
             const _InfoSection(

@@ -32,21 +32,36 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     super.dispose();
   }
 
+  // ✅ Método inteligente para remover acentos na hora da busca
+  String _normalize(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r'[áàâãä]'), 'a')
+        .replaceAll(RegExp(r'[éèêë]'), 'e')
+        .replaceAll(RegExp(r'[íìîï]'), 'i')
+        .replaceAll(RegExp(r'[óòôõö]'), 'o')
+        .replaceAll(RegExp(r'[úùûü]'), 'u')
+        .replaceAll(RegExp(r'[ç]'), 'c');
+  }
+
   List<Map<String, dynamic>> _applyFilters(List<Map<String, dynamic>> items) {
     return items.where((item) {
-      final modalidade = (item['modalidade'] as String? ?? '').toLowerCase();
-      final tipoDesligamento = (item['tipoDesligamento'] as String? ?? '')
-          .toLowerCase();
+      final modalidadeRaw = item['modalidade'] as String? ?? '';
+      final tipoDesligamentoRaw = item['tipoDesligamento'] as String? ?? '';
 
-      final searchLower = _searchQuery.toLowerCase();
+      final modalidadeNorm = _normalize(modalidadeRaw);
+      final tipoDesligamentoNorm = _normalize(tipoDesligamentoRaw);
+      final searchNorm = _normalize(_searchQuery);
+
       final matchesSearch =
           _searchQuery.isEmpty ||
-          modalidade.contains(searchLower) ||
-          tipoDesligamento.contains(searchLower);
+          modalidadeNorm.contains(searchNorm) ||
+          tipoDesligamentoNorm.contains(searchNorm);
 
       final matchesFilter =
           _filterModalidade == 'Todos' ||
-          modalidade == _filterModalidade.toLowerCase();
+          modalidadeRaw.toLowerCase() == _filterModalidade.toLowerCase();
+
       return matchesSearch && matchesFilter;
     }).toList();
   }
@@ -81,6 +96,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
   IconData _getIconData(String modalidade) {
     switch (modalidade) {
+      case 'Rescisão': // ✅ Ícone dedicado adicionado
+        return Icons.request_quote_outlined;
       case 'Férias':
         return Icons.beach_access;
       case 'FGTS':
@@ -99,7 +116,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Cálculo de $modalidade excluído com sucesso!'),
+            content: Text('Cálculo de $modalidade excluído!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -125,7 +142,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Excluir cálculo'),
-        content: Text('Deseja excluir o cálculo de $modalidade?'),
+        content: Text(
+          'Deseja excluir permanentemente o cálculo de $modalidade?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -151,6 +170,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         children: [
           _buildHeader(context),
           _buildSearchBar(),
+          // Se estiver a excluir, mostra um carregamento discreto no topo
+          if (_isLoading)
+            const LinearProgressIndicator(color: Color(0xFF192E6A)),
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: historyRepository.watchCalculations(),
@@ -209,7 +231,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                         Text(
                           allItems.isEmpty
                               ? 'Nenhum cálculo salvo ainda.\nFaça um cálculo e salve para ver aqui.'
-                              : 'Nenhum resultado encontrado.',
+                              : 'Nenhum resultado encontrado para a sua busca.',
                           style: const TextStyle(color: Colors.grey),
                           textAlign: TextAlign.center,
                         ),
@@ -244,6 +266,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 }
 
                 return ListView.builder(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior
+                      .onDrag, // ✅ UX: Esconde teclado ao rolar
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 8,
@@ -343,7 +367,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     controller: _searchController,
                     onChanged: (v) => setState(() => _searchQuery = v),
                     decoration: const InputDecoration(
-                      hintText: 'Buscar por modalidade...',
+                      hintText: 'Buscar cálculo...',
                       hintStyle: TextStyle(color: Colors.grey),
                       prefixIcon: Icon(Icons.search, color: Color(0xFF192E6A)),
                       border: InputBorder.none,
@@ -363,7 +387,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 ),
                 child: PopupMenuButton<String>(
                   icon: const Icon(Icons.filter_list, color: Color(0xFF192E6A)),
-                  tooltip: 'Filtrar',
+                  tooltip: 'Filtrar por modalidade',
                   onSelected: (v) => setState(() => _filterModalidade = v),
                   itemBuilder: (_) => _modalidades
                       .map((m) => PopupMenuItem(value: m, child: Text(m)))
@@ -404,10 +428,12 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
     return GestureDetector(
       onTap: () {
-        // Passa o docId junto com os dados
         final extraData = Map<String, dynamic>.from(item);
         extraData['docId'] = firestoreId;
-        context.push('/history/detail', extra: extraData);
+        context.push(
+          '/history/detail',
+          extra: extraData,
+        ); // Garanta que esta rota aponta para a CalculatorResultPage unificada
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),

@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthState {
   final bool isLoading;
@@ -35,6 +36,9 @@ class AuthState {
 
 class AuthViewModel extends Notifier<AuthState> {
   final _auth = FirebaseAuth.instance;
+
+  // ✅ Referência ao Firestore
+  final _firestore = FirebaseFirestore.instance;
 
   @override
   AuthState build() {
@@ -89,6 +93,14 @@ class AuthViewModel extends Notifier<AuthState> {
       );
       // Salva o nome no perfil do Firebase
       await credential.user!.updateDisplayName(name);
+
+      // ✅ Opcional: Salvar dados do usuário no Firestore
+      await _firestore.collection('users').doc(credential.user!.uid).set({
+        'name': name,
+        'email': email.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
       state = state.copyWith(
         isLoading: false,
         isAuthenticated: true,
@@ -106,6 +118,47 @@ class AuthViewModel extends Notifier<AuthState> {
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Erro ao cadastrar. Tente novamente.',
+      );
+      return false;
+    }
+  }
+
+  // ✅ NOVO MÉTODO: Excluir conta permanentemente
+  Future<bool> deleteAccount() async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        // 1. Apagar dados do usuário no Firestore (coleção 'users')
+        await _firestore.collection('users').doc(user.uid).delete();
+
+        // 2. Apagar o usuário do Firebase Auth
+        await user.delete();
+
+        // 3. Resetar estado local
+        state = const AuthState();
+        return true;
+      }
+      return false;
+    } on FirebaseAuthException catch (e) {
+      // Caso especial: Firebase exige login recente para deletar conta
+      if (e.code == 'requires-recent-login') {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage:
+              'Por segurança, faça login novamente para excluir a conta.',
+        );
+      } else {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: _translateError(e.code),
+        );
+      }
+      return false;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Erro ao excluir conta. Tente novamente.',
       );
       return false;
     }
@@ -136,6 +189,8 @@ class AuthViewModel extends Notifier<AuthState> {
         return 'Muitas tentativas. Aguarde alguns minutos.';
       case 'invalid-credential':
         return 'Email ou senha inválidos.';
+      case 'requires-recent-login':
+        return 'Por segurança, faça login novamente para excluir a conta.';
       default:
         return 'Erro de autenticação. Tente novamente.';
     }

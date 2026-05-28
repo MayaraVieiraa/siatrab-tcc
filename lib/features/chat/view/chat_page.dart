@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../viewmodel/chat_viewmodel.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -22,7 +23,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
@@ -36,6 +37,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
+
     _messageController.clear();
     await ref.read(chatViewModelProvider.notifier).sendMessage(text);
     _scrollToBottom();
@@ -45,7 +47,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatViewModelProvider);
 
-    // Scroll ao receber nova mensagem
     ref.listen(chatViewModelProvider, (previous, next) {
       if (previous?.messages.length != next.messages.length) {
         _scrollToBottom();
@@ -54,90 +55,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        foregroundColor: Colors.white,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF0F172A),
-                Color(0xFF1E3A8A),
-                Color(0xFF192E6A),
-                Color(0xFF192E6A),
-              ],
-              stops: [0.49, 0.58, 0.58, 0.67],
-            ),
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => context.go('/home'),
-        ),
-        title: const Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: Colors.white24,
-              radius: 18,
-              child: Icon(Icons.menu_book, color: Colors.white, size: 18),
-            ),
-            SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Aly',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  'chatbot inteligente.',
-                  style: TextStyle(fontSize: 11, color: Colors.white70),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white70),
-            tooltip: 'Limpar conversa',
-            onPressed: () =>
-                ref.read(chatViewModelProvider.notifier).clearChat(),
-          ),
-        ],
-      ),
+      appBar: _buildAppBar(),
       body: Column(
         children: [
-          if (chatState.errorMessage != null)
-            Container(
-              color: Colors.red.shade50,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    color: Colors.red.shade700,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      chatState.errorMessage!,
-                      style: TextStyle(
-                        color: Colors.red.shade700,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 16),
-                    onPressed: () =>
-                        ref.read(chatViewModelProvider.notifier).clearError(),
-                  ),
-                ],
-              ),
-            ),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -159,6 +79,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      foregroundColor: Colors.white,
+      flexibleSpace: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF0F172A), Color(0xFF192E6A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+      ),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios),
+        onPressed: () => context.go('/home'),
+      ),
+      title: const Text('Aly', style: TextStyle(fontWeight: FontWeight.bold)),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: () => ref.read(chatViewModelProvider.notifier).clearChat(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMessageBubble(ChatMessage message) {
     final isUser = message.isUser;
     return Align(
@@ -167,7 +113,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
         ),
         decoration: BoxDecoration(
           color: isUser ? const Color(0xFF5C78FF) : const Color(0xFFF0F2FF),
@@ -177,61 +123,52 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             bottomLeft: Radius.circular(isUser ? 18 : 4),
             bottomRight: Radius.circular(isUser ? 4 : 18),
           ),
-          border: isUser
-              ? null
-              : Border.all(
-                  color: const Color(0xFF192E6A).withValues(alpha: 0.15),
+        ),
+        child: isUser
+            ? Text(
+                message.text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  height: 1.4,
                 ),
-        ),
-        child: Text(
-          message.text,
-          style: TextStyle(
-            color: isUser ? Colors.white : const Color(0xFF192E6A),
-            fontSize: 14,
-            height: 1.4,
-          ),
-        ),
+              )
+            : MarkdownBody(
+                data: message.text,
+                styleSheet: MarkdownStyleSheet(
+                  p: const TextStyle(
+                    color: Color(0xFF1E293B),
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                  strong: const TextStyle(fontWeight: FontWeight.bold),
+                  listBullet: const TextStyle(color: Color(0xFF5C78FF)),
+                ),
+              ),
       ),
     );
   }
 
   Widget _buildTypingIndicator() {
-    return Align(
+    return const Align(
       alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0F2FF),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: const Color(0xFF192E6A).withValues(alpha: 0.15),
-          ),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _TypingDot(delay: 0),
-            SizedBox(width: 4),
-            _TypingDot(delay: 200),
-            SizedBox(width: 4),
-            _TypingDot(delay: 400),
-          ],
-        ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text("Aly está digitando..."),
       ),
     );
   }
 
   Widget _buildInputBar(bool isTyping) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
           ),
         ],
       ),
@@ -240,48 +177,28 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           Expanded(
             child: TextField(
               controller: _messageController,
-              enabled: !isTyping,
               decoration: InputDecoration(
-                hintText: isTyping
-                    ? 'Aly está digitando...'
-                    : 'Pergunte para Aly...',
-                hintStyle: const TextStyle(color: Colors.grey),
+                hintText: 'Pergunte para Aly...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(25),
+                  borderSide: BorderSide.none,
+                ),
                 filled: true,
-                fillColor: const Color(0xFFF5F5F5),
+                fillColor: const Color(0xFFF1F5F9),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 20,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide.none,
+                  vertical: 10,
                 ),
               ),
               onSubmitted: (_) => _sendMessage(),
             ),
           ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: isTyping ? null : _sendMessage,
-            child: Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                gradient: isTyping
-                    ? null
-                    : const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF1E3A8A), Color(0xFF192E6A)],
-                      ),
-                color: isTyping ? Colors.grey.shade300 : null,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.send,
-                color: isTyping ? Colors.grey : Colors.white,
-                size: 20,
-              ),
+          const SizedBox(width: 8),
+          CircleAvatar(
+            backgroundColor: const Color(0xFF5C78FF),
+            child: IconButton(
+              onPressed: _sendMessage,
+              icon: const Icon(Icons.send, color: Colors.white, size: 20),
             ),
           ),
         ],
@@ -326,6 +243,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               context.go('/calculator');
               break;
             case 2:
+              context.go('/chat');
               break;
             case 3:
               context.go('/profile');
@@ -333,68 +251,27 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           }
         },
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.calculate),
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calculate_outlined),
+            activeIcon: Icon(Icons.calculate_rounded),
             label: 'Calculator',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            activeIcon: Icon(Icons.chat_bubble_rounded),
             label: 'Chat',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
+            icon: Icon(Icons.person_outline_rounded),
+            activeIcon: Icon(Icons.person_rounded),
             label: 'Profile',
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _TypingDot extends StatefulWidget {
-  final int delay;
-  const _TypingDot({required this.delay});
-
-  @override
-  State<_TypingDot> createState() => _TypingDotState();
-}
-
-class _TypingDotState extends State<_TypingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    Future.delayed(Duration(milliseconds: widget.delay), () {
-      if (mounted) _controller.repeat(reverse: true);
-    });
-    _animation = Tween(begin: 0.4, end: 1.0).animate(_controller);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _animation,
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: const BoxDecoration(
-          color: Color(0xFF192E6A),
-          shape: BoxShape.circle,
-        ),
       ),
     );
   }

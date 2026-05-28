@@ -84,10 +84,10 @@ class ProfilePage extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildMenuItem(
+        // ✅ EMAIL ESTÁTICO (não clicável) - sem seta, sem onTap
+        _buildEmailStatic(
           icon: Icons.email_outlined,
-          label: 'Email: ${authState.userEmail ?? ''}',
-          onTap: () {},
+          email: authState.userEmail ?? '',
         ),
         _buildMenuItem(
           icon: Icons.lock_outline,
@@ -113,7 +113,7 @@ class ProfilePage extends ConsumerWidget {
         _buildMenuItem(
           icon: Icons.info_outlined,
           label: 'Sobre o Aplicativo',
-          onTap: () => context.push('/about'), // 👈 corrigido
+          onTap: () => context.push('/about'),
         ),
         const Divider(indent: 20, endIndent: 20, height: 24),
         _buildMenuItem(
@@ -132,6 +132,29 @@ class ProfilePage extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
       ],
+    );
+  }
+
+  // ✅ NOVO: Widget para email estático (sem seta, sem ação)
+  Widget _buildEmailStatic({required IconData icon, required String email}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF192E6A), size: 22),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              email,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.black87,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -167,27 +190,73 @@ class ProfilePage extends ConsumerWidget {
     BuildContext context,
     AuthViewModel authViewModel,
   ) {
+    bool isLoading = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Excluir conta'),
-        content: const Text(
-          'Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              authViewModel.logout();
-            },
-            child: const Text('Excluir', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+      barrierDismissible: !isLoading,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Excluir conta'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Tem certeza que deseja excluir sua conta? Esta ação é irreversível.',
+                  ),
+                  if (isLoading) ...[
+                    const SizedBox(height: 16),
+                    const Center(child: CircularProgressIndicator()),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          setDialogState(() => isLoading = true);
+
+                          final success = await authViewModel.deleteAccount();
+
+                          if (success && dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              const SnackBar(
+                                content: Text('Conta excluída com sucesso.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } else if (dialogContext.mounted) {
+                            setDialogState(() => isLoading = false);
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Erro ao excluir conta. Tente novamente.',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                  child: const Text(
+                    'Excluir',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -235,17 +304,24 @@ class ProfilePage extends ConsumerWidget {
           }
         },
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.calculate),
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calculate_outlined),
+            activeIcon: Icon(Icons.calculate_rounded),
             label: 'Calculator',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            activeIcon: Icon(Icons.chat_bubble_rounded),
             label: 'Chat',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
+            icon: Icon(Icons.person_outline_rounded),
+            activeIcon: Icon(Icons.person_rounded),
             label: 'Profile',
           ),
         ],

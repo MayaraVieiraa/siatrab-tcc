@@ -1,8 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../history/repository/history_repository.dart';
 import '../../../shared/utils/tax_utils.dart';
+
+// ✅ Formatador de Moeda
+class _BRLInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.isEmpty) return newValue.copyWith(text: '');
+    final value = int.parse(digits);
+    final formatted = NumberFormat.currency(
+      locale: 'pt_BR',
+      symbol: '',
+      decimalDigits: 2,
+    ).format(value / 100);
+    return newValue.copyWith(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
 
 class FeriasPage extends StatefulWidget {
   const FeriasPage({super.key});
@@ -120,7 +143,7 @@ class _FeriasPageState extends State<FeriasPage> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          onPressed: () => context.go('/home'),
+          onPressed: () => context.pop(),
         ),
         title: const Text(
           'Cálculo de Férias 2026',
@@ -135,10 +158,10 @@ class _FeriasPageState extends State<FeriasPage> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF192E6A).withValues(alpha: 0.07),
+                color: const Color(0xFF192E6A).withOpacity(0.07),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: const Color(0xFF192E6A).withValues(alpha: 0.2),
+                  color: const Color(0xFF192E6A).withOpacity(0.2),
                 ),
               ),
               child: const Row(
@@ -200,28 +223,38 @@ class _FeriasPageState extends State<FeriasPage> {
               TextFormField(
                 controller: _salaryController,
                 keyboardType: TextInputType.number,
+                inputFormatters: [_BRLInputFormatter()],
                 decoration: _inputDecoration(
                   label: 'Salário Base',
                   prefixText: 'R\$ ',
                 ),
-                validator: (v) =>
-                    (v == null || v.isEmpty) ? 'Informe o salário' : null,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Informe o salário';
+                  if (_parseSalary() <= 0) return 'Deve ser maior que zero';
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: TextFormField(
                       controller: _diasController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: _inputDecoration(
                         label: 'Dias de Férias',
-                        hint: 'Ex: 30',
+                        hint: 'Ex: 30, 45, 60...', // ✅ Dica atualizada
                       ),
                       validator: (v) {
                         final d = int.tryParse(v ?? '');
-                        if (d == null || d <= 0 || d > 30) {
-                          return 'Entre 1 e 30';
+                        if (d == null || d <= 0) {
+                          return 'Informe dias válidos';
+                        }
+                        // ✅ Trava de 30 dias removida para permitir férias acumuladas
+                        if (d > 120) {
+                          return 'Máximo de 120 dias';
                         }
                         return null;
                       },
@@ -232,6 +265,7 @@ class _FeriasPageState extends State<FeriasPage> {
                     child: TextFormField(
                       controller: _dependentesController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: _inputDecoration(label: 'Dependentes (IRRF)'),
                     ),
                   ),

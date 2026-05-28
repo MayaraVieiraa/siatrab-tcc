@@ -1,8 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ✅ Importação necessária para os InputFormatters
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../history/repository/history_repository.dart';
 import '../../../shared/utils/tax_utils.dart';
+
+// ✅ Adicionado o formatador de moeda para o campo de salário
+class _BRLInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.isEmpty) return newValue.copyWith(text: '');
+    final value = int.parse(digits);
+    final formatted = NumberFormat.currency(
+      locale: 'pt_BR',
+      symbol: '',
+      decimalDigits: 2,
+    ).format(value / 100);
+    return newValue.copyWith(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
 
 class InssPage extends StatefulWidget {
   const InssPage({super.key});
@@ -106,7 +129,7 @@ class _InssPageState extends State<InssPage> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          onPressed: () => context.go('/home'),
+          onPressed: () => context.pop(),
         ),
         title: const Text(
           'Calculadora de INSS 2026',
@@ -121,10 +144,10 @@ class _InssPageState extends State<InssPage> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF192E6A).withValues(alpha: 0.07),
+                color: const Color(0xFF192E6A).withOpacity(0.07),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: const Color(0xFF192E6A).withValues(alpha: 0.2),
+                  color: const Color(0xFF192E6A).withOpacity(0.2),
                 ),
               ),
               child: const Row(
@@ -189,17 +212,27 @@ class _InssPageState extends State<InssPage> {
               TextFormField(
                 controller: _salaryController,
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  _BRLInputFormatter(),
+                ], // ✅ Formatador BRL aplicado
                 decoration: _inputDecoration(
                   label: 'Salário Bruto Mensal',
                   prefixText: 'R\$ ',
                 ),
-                validator: (v) =>
-                    (v == null || v.isEmpty) ? 'Informe o salário' : null,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Informe o salário';
+                  if (_parseSalary() <= 0)
+                    return 'O salário deve ser maior que zero';
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _dependentesController,
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                ], // ✅ Bloqueia letras e pontos
                 decoration: _inputDecoration(
                   label: 'Número de Dependentes (IRRF)',
                 ),
@@ -267,7 +300,7 @@ class _InssPageState extends State<InssPage> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFF192E6A).withValues(alpha: 0.06),
+                color: const Color(0xFF192E6A).withOpacity(0.06),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -379,11 +412,11 @@ class _InssPageState extends State<InssPage> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: ativa
-            ? const Color(0xFF192E6A).withValues(alpha: 0.08)
+            ? const Color(0xFF192E6A).withOpacity(0.08)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(6),
         border: ativa
-            ? Border.all(color: const Color(0xFF192E6A).withValues(alpha: 0.3))
+            ? Border.all(color: const Color(0xFF192E6A).withOpacity(0.3))
             : null,
       ),
       child: Row(

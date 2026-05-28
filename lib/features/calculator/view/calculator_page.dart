@@ -5,6 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../viewmodel/calculator_viewmodel.dart';
 
+// =============================================================================
+// FORMATADORES
+// =============================================================================
+
 class _BRLInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
@@ -26,6 +30,43 @@ class _BRLInputFormatter extends TextInputFormatter {
   }
 }
 
+class _DateInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.length > 8) digits = digits.substring(0, 8);
+    String formatted = '';
+    for (int i = 0; i < digits.length; i++) {
+      if (i == 2 || i == 4) formatted += '/';
+      formatted += digits[i];
+    }
+    return newValue.copyWith(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+
+  static DateTime? parseDate(String text) {
+    if (text.length != 10) return null;
+    try {
+      final parts = text.split('/');
+      if (parts.length != 3) return null;
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final year = int.parse(parts[2]);
+      if (day < 1 || day > 31) return null;
+      if (month < 1 || month > 12) return null;
+      if (year < 1950 || year > 2030) return null;
+      return DateTime(year, month, day);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class CalculatorPage extends ConsumerStatefulWidget {
   const CalculatorPage({super.key});
 
@@ -34,11 +75,15 @@ class CalculatorPage extends ConsumerStatefulWidget {
 }
 
 class _CalculatorPageState extends ConsumerState<CalculatorPage> {
-  bool _empregadorDispensouAviso = false; // Variável de controle
+  // Variável estática para o aviso (sem erros de Provider)
+  static bool _avisoTccExibido = false;
+
   final _salaryController = TextEditingController();
   final _horasExtrasController = TextEditingController(text: '0');
   final _horasExtrasFeriadosController = TextEditingController(text: '0');
   final _feriasVencidasController = TextEditingController(text: '0');
+  final _admissaoController = TextEditingController();
+  final _demissaoController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   String _tipoAviso = 'Indenizado';
@@ -47,6 +92,7 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
   DateTime? _dataDemissao;
   String _adicionalInsalubridade = 'Não';
   String _tipoDesligamento = 'Sem justa causa';
+  bool _empregadorDispensouAviso = false;
 
   final List<String> _tiposAviso = ['Indenizado', 'Trabalhado'];
   final List<String> _insalubridades = [
@@ -62,6 +108,40 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
     'Acordo mútuo',
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_avisoTccExibido) {
+        _avisoTccExibido = true;
+        _showTccAviso();
+      }
+    });
+  }
+
+  void _showTccAviso() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Aviso de TCC',
+          style: TextStyle(color: Color(0xFF192E6A)),
+        ),
+        content: const Text(
+          'Este sistema é um projeto acadêmico. Cálculos são simulações educativas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   double _parseSalary() {
     final text = _salaryController.text
         .replaceAll('.', '')
@@ -75,22 +155,35 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
     _horasExtrasController.dispose();
     _horasExtrasFeriadosController.dispose();
     _feriasVencidasController.dispose();
+    _admissaoController.dispose();
+    _demissaoController.dispose();
     super.dispose();
   }
 
   Future<void> _selectDate(BuildContext context, bool isAdmissao) async {
+    DateTime initialDate = DateTime.now();
+    if (isAdmissao && _dataAdmissao != null) {
+      initialDate = _dataAdmissao!;
+    } else if (!isAdmissao && _dataDemissao != null) {
+      initialDate = _dataDemissao!;
+    }
+
+    // Usando a localidade padrão para não quebrar a aplicação (Inglês)
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: initialDate,
       firstDate: DateTime(1990),
       lastDate: DateTime(2030),
     );
+
     if (picked != null) {
       setState(() {
         if (isAdmissao) {
           _dataAdmissao = picked;
+          _admissaoController.text = DateFormat('dd/MM/yyyy').format(picked);
         } else {
           _dataDemissao = picked;
+          _demissaoController.text = DateFormat('dd/MM/yyyy').format(picked);
         }
       });
     }
@@ -105,12 +198,12 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
       appBar: AppBar(
         title: const Text(
           'Calculadora Rescisão',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF0F172A), Color(0xFF192E6A)],
+              colors: [Color(0xFF0F172A), Color(0xFF1E3A8A)],
             ),
           ),
         ),
@@ -125,7 +218,10 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
               _buildSectionCard(
                 title: 'Dados Contratuais',
                 children: [
-                  _buildCurrencyField(),
+                  _buildCurrencyField(
+                    label: 'Salário Bruto Mensal',
+                    controller: _salaryController,
+                  ),
                   const SizedBox(height: 16),
                   _buildDropdown(
                     label: 'Motivo do Desligamento',
@@ -144,7 +240,7 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
                       Expanded(
                         child: _buildDateField(
                           'Admissão',
-                          _dataAdmissao,
+                          _admissaoController,
                           () => _selectDate(context, true),
                         ),
                       ),
@@ -152,7 +248,7 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
                       Expanded(
                         child: _buildDateField(
                           'Demissão',
-                          _dataDemissao,
+                          _demissaoController,
                           () => _selectDate(context, false),
                         ),
                       ),
@@ -170,39 +266,23 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
                     items: _tiposAviso,
                     onChanged: (v) => setState(() => _tipoAviso = v!),
                   ),
-                  // Renderização condicional do Switch para dispensa do aviso
                   if (_tipoDesligamento == 'Pedido de demissão' &&
-                      _tipoAviso == 'Indenizado') ...[
-                    const SizedBox(height: 16),
+                      _tipoAviso == 'Indenizado')
                     SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: const Color(0xFF192E6A),
                       title: const Text(
                         'Empregador dispensou o aviso?',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        'Se marcado, o valor do aviso não será descontado.',
-                        style: TextStyle(fontSize: 11),
+                        style: TextStyle(fontSize: 13),
                       ),
                       value: _empregadorDispensouAviso,
-                      onChanged: (bool value) {
-                        setState(() {
-                          _empregadorDispensouAviso = value;
-                        });
-                      },
+                      onChanged: (v) =>
+                          setState(() => _empregadorDispensouAviso = v),
                     ),
-                  ],
                   const SizedBox(height: 16),
                   _buildTextField(
-                    label: 'Total de Dias de Férias Vencidas',
+                    label: 'Dias de Férias Vencidas',
                     controller: _feriasVencidasController,
-                    hint: 'Ex: 30, 45, 60...',
-                    icon: Icons.beach_access_rounded,
+                    hint: 'Ex: 30',
+                    icon: Icons.beach_access,
                   ),
                 ],
               ),
@@ -219,57 +299,25 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
                   ),
                   const SizedBox(height: 16),
                   _buildTextField(
-                    label: 'Horas Extras em Dias Úteis (adicional 50%)',
+                    label: 'Horas Extras 50%',
                     controller: _horasExtrasController,
-                    hint: 'Ex: 10, 20...',
-                    icon: Icons.more_time_rounded,
+                    hint: '0',
+                    icon: Icons.more_time,
                   ),
                   const SizedBox(height: 16),
                   _buildTextField(
-                    label: 'Horas Extras em Domingos/Feriados (adicional 100%)',
+                    label: 'Horas Extras 100%',
                     controller: _horasExtrasFeriadosController,
-                    hint: 'Ex: 4, 8...',
-                    icon: Icons.event_busy_rounded,
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFBFDBFE)),
-                    ),
-                    child: const Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: Color(0xFF1D4ED8),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Portaria nº 3.665/2023: horas em domingos e feriados '
-                            'no comércio requerem autorização por CCT e têm '
-                            'adicional mínimo de 100%.',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF1D4ED8),
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    hint: '0',
+                    icon: Icons.event_busy,
                   ),
                   const SizedBox(height: 16),
                   _buildStepperField(
-                    label: 'Nº de Dependentes',
+                    label: 'Dependentes',
                     value: _dependentes,
-                    onDecrement: () => setState(() {
-                      if (_dependentes > 0) _dependentes--;
-                    }),
+                    onDecrement: () => setState(
+                      () => _dependentes > 0 ? _dependentes-- : null,
+                    ),
                     onIncrement: () => setState(() => _dependentes++),
                   ),
                 ],
@@ -278,60 +326,53 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF192E6A),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  padding: const EdgeInsets.all(16),
                 ),
                 onPressed: calcState.isLoading ? null : _onCalculate,
                 child: calcState.isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
-                        'CALCULAR RESCISÃO',
+                        'CALCULAR',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
               ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(context),
+      bottomNavigationBar: _buildBottomNav(
+        context,
+      ), // ✅ AQUI ESTÁ O MENU INFERIOR
     );
   }
 
   void _onCalculate() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Valida datas
     if (_dataAdmissao == null || _dataDemissao == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selecione as datas de admissão e demissão.'),
-        ),
+        const SnackBar(content: Text('Por favor, selecione as datas.')),
       );
       return;
     }
 
-    // Valida ordem das datas
     if (_dataDemissao!.isBefore(_dataAdmissao!)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('A data de demissão não pode ser anterior à admissão.'),
+          content: Text('A data de demissão não pode ser antes da admissão.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    // Montagem do input com a variável nova repassada para a ViewModel
     final input = CalculatorInput(
       salary: _parseSalary(),
       tipoAviso: _tipoAviso,
-      feriasVencidas: _feriasVencidasController.text,
+      feriasVencidasDias: int.tryParse(_feriasVencidasController.text) ?? 0,
       dependentes: _dependentes,
       dataAdmissao: _dataAdmissao!,
       dataDemissao: _dataDemissao!,
@@ -340,24 +381,177 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
       horasExtrasFeriados:
           int.tryParse(_horasExtrasFeriadosController.text) ?? 0,
       tipoDesligamento: _tipoDesligamento,
-      empregadorDispensouAviso:
-          _empregadorDispensouAviso, // <-- Variável repassada aqui!
+      empregadorDispensouAviso: _empregadorDispensouAviso,
     );
 
     await ref.read(calculatorViewModelProvider.notifier).calculate(input);
 
-    if (context.mounted) {
-      context.push(
-        '/calculator/result',
-        extra: {
-          'dataAdmissao': _dataAdmissao,
-          'dataDemissao': _dataDemissao,
-          'tipoDesligamento': _tipoDesligamento,
-        },
-      );
+    if (mounted) {
+      final result = ref.read(calculatorViewModelProvider).result;
+
+      if (result != null) {
+        context.push(
+          '/calculator/result',
+          extra: {
+            'modalidade': 'Rescisão',
+            'dataAdmissao': _dataAdmissao?.toIso8601String(),
+            'dataDemissao': _dataDemissao?.toIso8601String(),
+            'tipoDesligamento': _tipoDesligamento,
+            'saldoSalario': result.saldoSalario,
+            'insalubridadeProporcional': result.insalubridadeProporcional,
+            'horasExtrasValor': result.horasExtrasValor,
+            'avisoPrevio': result.avisoPrevio,
+            'decimoTerceiroProporcional': result.decimoTerceiroProporcional,
+            'feriasProporcional': result.feriasProporcional,
+            'tercoFeriasProporcional': result.tercoFeriasProporcional,
+            'feriasVencidas': result.feriasVencidas,
+            'tercoFeriasVencidas': result.tercoFeriasVencidas,
+            'multaFgts': result.multaFgts,
+            'fgtsDepositoEstimado': result.fgtsDepositoEstimado,
+            'fgtsSaqueDisponivel': result.fgtsSaqueDisponivel,
+            'inss': result.inss,
+            'irrf': result.irrf,
+            'descontoAviso': result.descontoAviso,
+            'totalBruto': result.totalBruto,
+            'totalDescontos': result.totalDescontos,
+            'totalLiquido': result.totalLiquido,
+            'mesesTrabalhados': result.mesesTrabalhados,
+            'diasAviso': result.diasAviso,
+            'anosCompletos': result.anosCompletos,
+          },
+        );
+      }
     }
   }
 
+  Widget _buildSectionCard({
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF192E6A),
+              ),
+            ),
+            const Divider(height: 20),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required String label,
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  Widget _buildCurrencyField({
+    required String label,
+    required TextEditingController controller,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: [_BRLInputFormatter()],
+      decoration: InputDecoration(
+        labelText: label,
+        prefixText: 'R\$ ',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null,
+    );
+  }
+
+  Widget _buildDropdown({
+    required String label,
+    required String value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      items: items
+          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+          .toList(),
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _buildDateField(
+    String label,
+    TextEditingController controller,
+    VoidCallback onTap,
+  ) {
+    return TextFormField(
+      controller: controller,
+      readOnly: true,
+      onTap: onTap,
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: const Icon(Icons.calendar_today),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null,
+    );
+  }
+
+  Widget _buildStepperField({
+    required String label,
+    required int value,
+    required VoidCallback onDecrement,
+    required VoidCallback onIncrement,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+        Row(
+          children: [
+            IconButton(icon: const Icon(Icons.remove), onPressed: onDecrement),
+            Text(
+              '$value',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            IconButton(icon: const Icon(Icons.add), onPressed: onIncrement),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ✅ MÉTODO DO MENU INFERIOR (PADRÃO SIATRAB)
   Widget _buildBottomNav(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
@@ -378,7 +572,7 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
         ),
       ),
       child: BottomNavigationBar(
-        currentIndex: 1,
+        currentIndex: 1, // 1 representa a página "Calculator"
         backgroundColor: Colors.transparent,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.white,
@@ -425,243 +619,6 @@ class _CalculatorPageState extends ConsumerState<CalculatorPage> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildSectionCard({
-    required String title,
-    required List<Widget> children,
-  }) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF192E6A),
-              ),
-            ),
-            const Divider(height: 20),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required String label,
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, size: 20, color: const Color(0xFF192E6A)),
-            hintText: hint,
-            filled: true,
-            fillColor: const Color(0xFFF8FAFC),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCurrencyField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Salário Bruto Mensal',
-          style: TextStyle(
-            fontSize: 13,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          controller: _salaryController,
-          keyboardType: TextInputType.number,
-          inputFormatters: [_BRLInputFormatter()],
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Informe o salário bruto mensal.';
-            }
-            if (_parseSalary() <= 0) {
-              return 'O salário deve ser maior que zero.';
-            }
-            return null;
-          },
-          decoration: InputDecoration(
-            prefixText: 'R\$ ',
-            filled: true,
-            fillColor: const Color(0xFFF8FAFC),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDropdown({
-    required String label,
-    required String value,
-    required List<String> items,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<String>(
-          value: value,
-          isExpanded: true,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: const Color(0xFFF8FAFC),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-          ),
-          items: items
-              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-              .toList(),
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDateField(String label, DateTime? value, VoidCallback onTap) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        InkWell(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  value == null
-                      ? 'Selecionar'
-                      : DateFormat('dd/MM/yyyy').format(value),
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const Icon(
-                  Icons.calendar_today,
-                  size: 16,
-                  color: Color(0xFF192E6A),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStepperField({
-    required String label,
-    required int value,
-    required VoidCallback onDecrement,
-    required VoidCallback onIncrement,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.remove),
-                onPressed: onDecrement,
-              ),
-              Text(
-                '$value',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              IconButton(icon: const Icon(Icons.add), onPressed: onIncrement),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

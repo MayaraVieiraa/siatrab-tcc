@@ -1,9 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'firebase_options.dart';
 
+// --- Features ---
 import 'features/auth/view/login_page.dart';
 import 'features/auth/view/register_page.dart';
 import 'features/auth/view/splash_page.dart';
@@ -17,7 +19,6 @@ import 'features/profile/view/profile_page.dart';
 import 'features/profile/view/privacy_policy_page.dart';
 import 'features/profile/view/terms_of_use_page.dart';
 import 'features/history/view/history_page.dart';
-import 'features/history/view/history_detail_page.dart';
 import 'features/profile/view/about_page.dart';
 import 'features/calculator/view/inss_page.dart';
 import 'features/calculator/view/fgts_page.dart';
@@ -35,26 +36,38 @@ const _publicRoutes = [
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   runApp(const ProviderScope(child: SIATRABApp()));
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(authViewModelProvider);
+
   return GoRouter(
     initialLocation: '/splash',
     redirect: (context, state) {
-      final isAuthenticated = ref.read(authViewModelProvider).isAuthenticated;
+      final isAuthenticated = authState.isAuthenticated;
       final path = state.uri.path;
       final isPublic = _publicRoutes.contains(path);
 
-      if (!isAuthenticated && !isPublic) return '/login';
+      debugPrint(
+        '🔄 Redirect - isAuthenticated: $isAuthenticated, path: $path',
+      );
+
+      // Não autenticado e tentando acessar rota privada → vai para login
+      if (!isAuthenticated && !isPublic) {
+        return '/login';
+      }
+
+      // Autenticado e tentando acessar rota pública (login, register, splash) → vai para home
       if (isAuthenticated &&
           (path == '/login' || path == '/register' || path == '/splash')) {
         return '/home';
       }
+
       return null;
     },
     routes: [
-      // Rotas públicas
       GoRoute(
         path: '/splash',
         name: 'splash',
@@ -76,6 +89,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ForgotPasswordPage(),
       ),
       GoRoute(
+        path: '/home',
+        name: 'home',
+        builder: (context, state) => const HomePage(),
+      ),
+      GoRoute(
         path: '/terms-of-use',
         name: 'terms-of-use',
         builder: (context, state) => const TermsOfUsePage(),
@@ -85,15 +103,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'privacy-policy',
         builder: (context, state) => const PrivacyPolicyPage(),
       ),
-
-      // Rotas principais (autenticadas)
-      GoRoute(
-        path: '/home',
-        name: 'home',
-        builder: (context, state) => const HomePage(),
-      ),
-
-      // History com rota aninhada
       GoRoute(
         path: '/history',
         name: 'history',
@@ -104,23 +113,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             name: 'history-detail',
             builder: (context, state) {
               final extra = state.extra;
-
-              // Verificação segura do tipo
               if (extra is Map<String, dynamic>) {
-                if (extra.containsKey('data') &&
-                    extra['data'] is Map<String, dynamic>) {
-                  return HistoryDetailPage(
-                    data: extra['data'] as Map<String, dynamic>,
-                    docId: extra['docId'] as String?,
-                  );
-                }
-                return HistoryDetailPage(
+                return CalculatorResultPage(
                   data: extra,
                   docId: extra['docId'] as String?,
                 );
               }
-
-              // Fallback seguro
               return const Scaffold(
                 body: Center(
                   child: Text('Erro ao carregar dados do histórico'),
@@ -130,8 +128,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-
-      // Calculator com rota aninhada
       GoRoute(
         path: '/calculator',
         name: 'calculator',
@@ -146,16 +142,12 @@ final routerProvider = Provider<GoRouter>((ref) {
                 return CalculatorResultPage(data: extra);
               }
               return const Scaffold(
-                body: Center(
-                  child: Text('Erro ao carregar resultado do cálculo'),
-                ),
+                body: Center(child: Text('Erro ao carregar resultado')),
               );
             },
           ),
         ],
       ),
-
-      // Rotas de ferramentas
       GoRoute(
         path: '/inss',
         name: 'inss',
@@ -171,8 +163,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'ferias',
         builder: (context, state) => const FeriasPage(),
       ),
-
-      // Chat e Perfil
       GoRoute(
         path: '/chat',
         name: 'chat',
@@ -188,8 +178,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'about',
         builder: (context, state) => const AboutPage(),
       ),
-
-      // Redirecionamento padrão
       GoRoute(path: '/', redirect: (context, state) => '/home'),
     ],
   );
