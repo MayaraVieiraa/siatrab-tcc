@@ -118,12 +118,12 @@ class _InssPageState extends State<InssPage> {
 
       // Prepara dados garantindo que não há valores null
       final dataToSave = <String, dynamic>{
-        'modalidade': 'INSS/IRRF',
-        'salario': r['salarioBruto'] ?? 0.0,
-        'inss': r['descontoINSS'] ?? 0.0,
-        'irrf': r['descontoIRRF'] ?? 0.0,
+        'modalidade': 'INSS',
+        'salarioBruto': r['salarioBruto'] ?? 0.0,
+        'descontoINSS': r['descontoINSS'] ?? 0.0,
+        'descontoIRRF': r['descontoIRRF'] ?? 0.0,
         'totalDescontos': r['totalDescontos'] ?? 0.0,
-        'totalLiquido': r['salarioLiquido'] ?? 0.0,
+        'salarioLiquido': r['salarioLiquido'] ?? 0.0,
         'aliquotaEfetivaINSS': r['aliquotaEfetivaINSS'] ?? 0.0,
         'dataCalculo': DateTime.now().toIso8601String(),
       };

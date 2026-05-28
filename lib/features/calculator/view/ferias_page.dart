@@ -133,14 +133,14 @@ class _FeriasPageState extends State<FeriasPage> {
       // Prepara dados garantindo que não há valores null
       final dataToSave = <String, dynamic>{
         'modalidade': 'Férias',
-        'diasFerias': dias,
+        'dias': dias,
         'salario': r['salario'] ?? 0.0,
-        'feriasProporcional': r['valorFerias'] ?? 0.0,
+        'valorFerias': r['valorFerias'] ?? 0.0,
         'tercoFerias': r['tercoFerias'] ?? 0.0,
-        'totalBruto': r['bruto'] ?? 0.0,
+        'bruto': r['bruto'] ?? 0.0,
         'inss': r['inss'] ?? 0.0,
         'irrf': r['irrf'] ?? 0.0,
-        'totalLiquido': r['liquido'] ?? 0.0,
+        'liquido': r['liquido'] ?? 0.0,
         'dataCalculo': DateTime.now().toIso8601String(),
       };
 

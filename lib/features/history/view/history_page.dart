@@ -58,9 +58,12 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
           modalidadeNorm.contains(searchNorm) ||
           tipoDesligamentoNorm.contains(searchNorm);
 
+      // Normaliza 'INSS/IRRF' para 'INSS' na comparação de filtro
+      final modalidadeParaFiltro = modalidadeRaw == 'INSS/IRRF' ? 'INSS' : modalidadeRaw;
+
       final matchesFilter =
           _filterModalidade == 'Todos' ||
-          modalidadeRaw.toLowerCase() == _filterModalidade.toLowerCase();
+          modalidadeParaFiltro.toLowerCase() == _filterModalidade.toLowerCase();
 
       return matchesSearch && matchesFilter;
     }).toList();
@@ -69,6 +72,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   double _getTotalLiquido(Map<String, dynamic> item) {
     if (item['totalLiquido'] != null) {
       return (item['totalLiquido'] as num?)?.toDouble() ?? 0;
+    }
+    if (item['liquido'] != null) {
+      return (item['liquido'] as num?)?.toDouble() ?? 0;
     }
     if (item['salarioLiquido'] != null) {
       return (item['salarioLiquido'] as num?)?.toDouble() ?? 0;

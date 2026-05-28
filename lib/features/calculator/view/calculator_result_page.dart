@@ -19,7 +19,14 @@ class CalculatorResultPage extends ConsumerStatefulWidget {
 class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
   int _selectedTab = 0;
 
-  double _d(String key) => (widget.data[key] as num?)?.toDouble() ?? 0.0;
+  double _d(String key, [String? fallbackKey]) {
+    final v = widget.data[key] as num?;
+    if (v != null) return v.toDouble();
+    if (fallbackKey != null) {
+      return (widget.data[fallbackKey] as num?)?.toDouble() ?? 0.0;
+    }
+    return 0.0;
+  }
 
   String _formatCurrency(double value) => NumberFormat.currency(
     locale: 'pt_BR',
@@ -31,7 +38,7 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
   bool get _isRescisao => _modalidade == 'Rescisão';
   bool get _isFerias => _modalidade == 'Férias';
   bool get _isFgts => _modalidade == 'FGTS';
-  bool get _isInss => _modalidade == 'INSS';
+  bool get _isInss => _modalidade == 'INSS' || _modalidade == 'INSS/IRRF';
 
   String get _labelMulta => widget.data['tipoDesligamento'] == 'Acordo mútuo'
       ? 'Multa 20% s/ FGTS:'
@@ -179,10 +186,10 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                     'Meses trabalhados:',
                                     '$mesesTrabalhados meses',
                                   ),
-                                if (_isFerias && widget.data['dias'] != null)
+                                if (_isFerias && (widget.data['dias'] != null || widget.data['diasFerias'] != null))
                                   _infoRow(
                                     'Dias de férias:',
-                                    '${widget.data['dias']} dias',
+                                    '${widget.data['dias'] ?? widget.data['diasFerias']} dias',
                                   ),
 
                                 const Divider(height: 28),
@@ -211,7 +218,7 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                 ] else if (_isFerias) ...[
                                   _valueRow(
                                     'Valor das Férias:',
-                                    _d('valorFerias'),
+                                    _d('valorFerias', 'feriasProporcional'),
                                   ),
                                   _valueRow(
                                     'Adicional 1/3:',
@@ -220,7 +227,7 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                   const Divider(),
                                   _valueRow(
                                     'Total Bruto:',
-                                    _d('bruto'),
+                                    _d('bruto', 'totalBruto'),
                                     bold: true,
                                   ),
                                   _valueRow(
@@ -236,7 +243,7 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                   const Divider(),
                                   _valueRow(
                                     'Líquido a Receber:',
-                                    _d('liquido'),
+                                    _d('liquido', 'totalLiquido'),
                                     bold: true,
                                     highlight: true,
                                     isLarge: true,
@@ -251,8 +258,8 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                     'Saldo estimado na conta:',
                                     _d('saldoFgts'),
                                   ),
-                                  if (_d('multa') > 0)
-                                    _valueRow(_labelMulta, _d('multa')),
+                                  if (_d('multa', 'multaFgts') > 0)
+                                    _valueRow(_labelMulta, _d('multa', 'multaFgts')),
                                   if (_d('saqueDisponivel') > 0)
                                     _valueRow(
                                       'Saque FGTS disponível:',
@@ -264,22 +271,22 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                 ] else if (_isInss) ...[
                                   _valueRow(
                                     'Salário Bruto:',
-                                    _d('salarioBruto'),
+                                    _d('salarioBruto', 'salario'),
                                   ),
                                   _valueRow(
                                     'Desconto INSS:',
-                                    _d('descontoINSS'),
+                                    _d('descontoINSS', 'inss'),
                                     isNegative: true,
                                   ),
                                   _valueRow(
                                     'Desconto IRRF:',
-                                    _d('descontoIRRF'),
+                                    _d('descontoIRRF', 'irrf'),
                                     isNegative: true,
                                   ),
                                   const Divider(),
                                   _valueRow(
                                     'Salário Líquido:',
-                                    _d('salarioLiquido'),
+                                    _d('salarioLiquido', 'totalLiquido'),
                                     bold: true,
                                     highlight: true,
                                     isLarge: true,
@@ -427,11 +434,11 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                   _valueRow('Salário Base:', _d('salario')),
                                   _infoRow(
                                     'Dias de férias:',
-                                    '${widget.data['dias'] ?? 30} dias',
+                                    '${widget.data['dias'] ?? widget.data['diasFerias'] ?? 30} dias',
                                   ),
                                   _valueRow(
                                     'Valor das Férias:',
-                                    _d('valorFerias'),
+                                    _d('valorFerias', 'feriasProporcional'),
                                   ),
                                   _valueRow(
                                     'Adicional Constitucional 1/3:',
@@ -440,7 +447,7 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                   const Divider(),
                                   _valueRow(
                                     'Subtotal (Bruto):',
-                                    _d('bruto'),
+                                    _d('bruto', 'totalBruto'),
                                     bold: true,
                                   ),
                                   const Divider(height: 20),
@@ -459,7 +466,7 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                   const Divider(),
                                   _valueRow(
                                     'Líquido a Receber:',
-                                    _d('liquido'),
+                                    _d('liquido', 'totalLiquido'),
                                     bold: true,
                                     highlight: true,
                                   ),
@@ -482,9 +489,9 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                     'Total Depositado (8% × meses):',
                                     _d('saldoFgts'),
                                   ),
-                                  if (_d('multa') > 0) ...[
+                                  if (_d('multa', 'multaFgts') > 0) ...[
                                     const Divider(),
-                                    _valueRow('Multa Rescisória:', _d('multa')),
+                                    _valueRow('Multa Rescisória:', _d('multa', 'multaFgts')),
                                     _infoRow(
                                       'Percentual:',
                                       tipoDesligamento == 'Acordo mútuo'
@@ -511,26 +518,26 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                   const SizedBox(height: 12),
                                   _valueRow(
                                     'Salário Bruto:',
-                                    _d('salarioBruto'),
+                                    _d('salarioBruto', 'salario'),
                                   ),
                                   const SizedBox(height: 8),
                                   _sectionTitle(
                                     'Tabela INSS Progressiva 2026:',
                                   ),
                                   const SizedBox(height: 8),
-                                  _buildInssTable(_d('salarioBruto')),
+                                  _buildInssTable(_d('salarioBruto', 'salario')),
                                   const Divider(),
                                   _valueRow(
                                     'Desconto Total INSS:',
-                                    _d('descontoINSS'),
+                                    _d('descontoINSS', 'inss'),
                                     bold: true,
                                     isNegative: true,
                                   ),
-                                  if (_d('descontoIRRF') > 0) ...[
+                                  if (_d('descontoIRRF', 'irrf') > 0) ...[
                                     const SizedBox(height: 8),
                                     _valueRow(
                                       'Desconto IRRF:',
-                                      _d('descontoIRRF'),
+                                      _d('descontoIRRF', 'irrf'),
                                       isNegative: true,
                                     ),
                                     _infoRow(
@@ -538,7 +545,7 @@ class _CalculatorResultPageState extends ConsumerState<CalculatorResultPage> {
                                       '${widget.data['dependentes'] ?? 0}',
                                     ),
                                   ],
-                                  if (_d('descontoIRRF') == 0)
+                                  if (_d('descontoIRRF', 'irrf') == 0)
                                     _buildInfoChip(
                                       Icons.check_circle_outline,
                                       'Isento de IRRF — base abaixo de R\$ 5.000,00',

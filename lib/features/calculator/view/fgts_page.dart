@@ -149,7 +149,7 @@ class _FgtsPageState extends State<FgtsPage> {
         'mesesTrabalhados': (r['meses'] ?? 0).toInt(),
         'depositoMensal': r['depositoMensal'] ?? 0.0,
         'saldoFgts': r['saldoFgts'] ?? 0.0,
-        'multaFgts': r['multa'] ?? 0.0,
+        'multa': r['multa'] ?? 0.0,
         'saqueDisponivel': r['saqueDisponivel'] ?? 0.0,
         'totalLiquido': r['totalSaque'] ?? 0.0,
         'dataCalculo': DateTime.now().toIso8601String(),
