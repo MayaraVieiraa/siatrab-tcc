@@ -7,6 +7,7 @@ O projeto tem como objetivo apoiar trabalhadores na compreensão de seus direito
 ## 🚀 Sobre o Projeto
 
 O SIATRAB busca traduzir a complexidade da legislação trabalhista para uma interface intuitiva, permitindo que o usuário realize simulações de cálculos e entenda melhor os termos jurídicos envolvidos no encerramento de vínculos empregatícios.
+## Link de acesso a aplicação: https://siatrab-53f04.web.app/ 
 
 ### 🛠 Tecnologias Utilizadas
 
